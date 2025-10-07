@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/env bash
 
 # This needs to be pulled in first because we over-ride some of what's in it!
 . $TOPDIR/util.sh
@@ -68,7 +68,7 @@ redirect() {
   fi
 
   # See http://unix.stackexchange.com/questions/206786/testing-if-a-file-descriptor-is-valid
-  if ! { true >&8; } 2>&-; then
+  if ! { true >&8; } 2>/dev/null; then
     # Save stdout & stderr
     exec 8>&1
     exec 9>&2
@@ -116,6 +116,39 @@ debug() {
     error DEBUG $level: "$@"
   fi
 }
+
+# Smart branch detection: if pgxntool-test is on a non-master branch,
+# automatically use the same branch from pgxntool if it exists
+if [ -z "$PGXNBRANCH" ]; then
+  # Detect current branch of pgxntool-test
+  TEST_HARNESS_BRANCH=$(git -C "$TOPDIR" symbolic-ref --short HEAD 2>/dev/null || echo "master")
+  debug 9 "TEST_HARNESS_BRANCH=$TEST_HARNESS_BRANCH"
+
+  # Default to master if test harness is on master
+  if [ "$TEST_HARNESS_BRANCH" = "master" ]; then
+    PGXNBRANCH="master"
+  else
+    # Check if pgxntool is local and what branch it's on
+    PGXNREPO_TEMP=${2:-${TOPDIR}/../pgxntool}
+    if local_repo "$PGXNREPO_TEMP"; then
+      PGXNTOOL_BRANCH=$(git -C "$PGXNREPO_TEMP" symbolic-ref --short HEAD 2>/dev/null || echo "master")
+      debug 9 "PGXNTOOL_BRANCH=$PGXNTOOL_BRANCH"
+
+      # Use pgxntool's branch if it's master or matches test harness branch
+      if [ "$PGXNTOOL_BRANCH" = "master" ] || [ "$PGXNTOOL_BRANCH" = "$TEST_HARNESS_BRANCH" ]; then
+        PGXNBRANCH="$PGXNTOOL_BRANCH"
+      else
+        # Different branches - use master as safe fallback
+        error "WARNING: pgxntool-test is on '$TEST_HARNESS_BRANCH' but pgxntool is on '$PGXNTOOL_BRANCH'"
+        error "Using 'master' branch. Set PGXNBRANCH explicitly to override."
+        PGXNBRANCH="master"
+      fi
+    else
+      # Remote repo - default to master
+      PGXNBRANCH="master"
+    fi
+  fi
+fi
 
 PGXNBRANCH=${PGXNBRANCH:-${1:-master}}
 PGXNREPO=${PGXNREPO:-${2:-${TOPDIR}/../pgxntool}}
