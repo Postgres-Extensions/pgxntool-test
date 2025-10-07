@@ -21,7 +21,7 @@ cd $TEST_REPO
   git init --bare ../fake_repo > /dev/null
   git remote remove origin
   git remote add origin ../fake_repo
-  git push --set-upstream origin master
+  git push --set-upstream origin $(git symbolic-ref --short HEAD)
 } 2>&1 # Git is damn chatty...
 
 # If the repo is local then see if the local checkout is on the branch we want
