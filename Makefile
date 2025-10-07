@@ -83,7 +83,7 @@ $(DIRS): %:
 $(RESULT_SED): base_result.sed | $(RESULT_DIR)
 	@echo "Constructing $@"
 	@cp $< $@
-	@if [ `psql -qtc "SELECT current_setting('server_version_num')::int < 90200"` == t ]; then \
+	@if [ "$$(psql -X -qtc "SELECT current_setting('server_version_num')::int < 90200")" = "t" ]; then \
 		echo "Enabling support for Postgres < 9.2" ;\
 		echo "s!rm -f  sql/pgxntool-test--0.1.0.sql!rm -rf  sql/pgxntool-test--0.1.0.sql!" >> $@ ;\
 		echo "s!rm -f ../distribution_test!rm -rf ../distribution_test!" >> $@ ;\
