@@ -67,12 +67,14 @@ Tests run in dependency order (see `Makefile`):
 ## Common Commands
 
 ```bash
-make test              # Clean temp environment and run all tests
+make test              # Clean temp environment and run all tests (no need for 'make clean' first)
 make cont              # Continue running tests (skip cleanup)
 make sync-expected     # Copy results/*.out to expected/ (after verifying correctness!)
 make clean             # Remove temporary directories and results
 make print-VARNAME     # Debug: print value of any make variable
 ```
+
+**Note:** `make test` automatically runs `clean-temp` as a prerequisite, so there's no need to run `make clean` before testing.
 
 ## Test Development Workflow
 
