@@ -32,12 +32,28 @@ test-make-results: test-make-test
 .PHONY: test
 test: clean-temp cont
 
+# Run both legacy and BATS tests
+.PHONY: test-all
+test-all: clean-temp cont test-bats
+
 # Just continue what we were building
 .PHONY: cont
 cont: $(TEST_TARGETS)
 	@[ "`cat $(DIFF_DIR)/*.diff 2>/dev/null | head -n1`" == "" ] \
 		&& (echo; echo 'All tests passed!'; echo) \
 		|| (echo; echo "Some tests failed:"; echo ; egrep -lR '.' $(DIFF_DIR); echo; exit 1)
+
+# BATS tests (run after legacy tests, before cleanup)
+.PHONY: test-bats
+test-bats: test-dist
+	@echo
+	@echo "Running BATS tests..."
+	@test/bats/bin/bats tests-bats/*.bats
+	@echo
+
+# Alias for legacy tests
+.PHONY: test-legacy
+test-legacy: test
 
 #
 # Actual test targets
