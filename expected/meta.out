@@ -1,7 +1,0 @@
-# Verify changing META.in.json works
-######################################
-# This make will produce a bogus "already up to date" message for some reason
-######################################
-make[1]: `META.json' is up to date.
-@GIT COMMIT@ Change META
- 2 files changed, 4 insertions(+), 4 deletions(-)

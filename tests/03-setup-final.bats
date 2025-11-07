@@ -8,11 +8,11 @@
 load helpers
 
 setup_file() {
-  debug 1 ">>> ENTER setup_file: 05-setup-final (PID=$$)"
-  setup_sequential_test "05-setup-final" "04-dist"
+  debug 1 ">>> ENTER setup_file: 03-setup-final (PID=$$)"
+  setup_sequential_test "03-setup-final" "02-dist"
 
   export EXTENSION_NAME="pgxntool-test"
-  debug 1 "<<< EXIT setup_file: 05-setup-final (PID=$$)"
+  debug 1 "<<< EXIT setup_file: 03-setup-final (PID=$$)"
 }
 
 setup() {
@@ -21,9 +21,9 @@ setup() {
 }
 
 teardown_file() {
-  debug 1 ">>> ENTER teardown_file: 05-setup-final (PID=$$)"
-  mark_test_complete "05-setup-final"
-  debug 1 "<<< EXIT teardown_file: 05-setup-final (PID=$$)"
+  debug 1 ">>> ENTER teardown_file: 03-setup-final (PID=$$)"
+  mark_test_complete "03-setup-final"
+  debug 1 "<<< EXIT teardown_file: 03-setup-final (PID=$$)"
 }
 
 @test "setup.sh can be run again" {
@@ -55,21 +55,6 @@ teardown_file() {
   # Should be no changes
   run git diff --exit-code
   [ "$status" -eq 0 ]
-}
-
-@test "template files can be copied to root" {
-  # Skip if already copied
-  if [ -f "TEST_DOC.asc" ]; then
-    skip "Template files already copied"
-  fi
-
-  # Copy template files from t/ to root
-  [ -d "t" ] || skip "No t/ directory"
-
-  cp -R t/* .
-
-  # Verify files exist
-  [ -f "TEST_DOC.asc" ] || [ -d "doc" ] || [ -d "sql" ]
 }
 
 @test "deps.sql can be updated with extension name" {

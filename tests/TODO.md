@@ -63,8 +63,8 @@ Add to `Makefile`:
 ```makefile
 .PHONY: lint
 lint:
-	find tests-bats -name '*.bash' | xargs shellcheck
-	find tests-bats -name '*.bats' | xargs shellcheck -s bash
+	find tests -name '*.bash' | xargs shellcheck
+	find tests -name '*.bats' | xargs shellcheck -s bash
 	shellcheck lib.sh util.sh make-temp.sh clean-temp.sh
 ```
 

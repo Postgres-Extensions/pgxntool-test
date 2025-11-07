@@ -35,7 +35,7 @@ teardown_file() {
   # run in the same parent process. Our PID-based safety mechanism (which prevents
   # destroying test environments while tests are running) depends on this being true.
   #
-  # See tests-bats/README.pids.md for detailed explanation of BATS process model.
+  # See tests/README.pids.md for detailed explanation of BATS process model.
 
   local test_name="00-validate-tests"
   local state_dir="$TEST_DIR/.bats-state"
@@ -66,7 +66,7 @@ teardown_file() {
     echo "  Current PID (in teardown_file): $$" >&2
     echo "This indicates setup_file() and teardown_file() are NOT running in the same process" >&2
     echo "Our PID safety mechanism relies on this assumption being correct" >&2
-    echo "See tests-bats/README.pids.md for details" >&2
+    echo "See tests/README.pids.md for details" >&2
     return 1
   fi
 
@@ -127,6 +127,9 @@ teardown_file() {
     # Skip this validation test itself
     [ "$test_file" = "00-validate-tests.bats" ] && continue
 
+    # Skip foundation test (special case - base for all tests, uses state markers)
+    [ "$test_file" = "foundation.bats" ] && continue
+
     if grep -q "mark_test_start\|mark_test_complete" "$test_file"; then
       echo "FAIL: Non-sequential test $test_file incorrectly uses state markers (should use setup_nonsequential_test instead)" >&2
       return 1
@@ -170,14 +173,16 @@ teardown_file() {
   done
 }
 
-@test "all standalone tests use setup_nonsequential_test()" {
+@test "all standalone tests use setup_nonsequential_test() or ensure_foundation()" {
   cd "$BATS_TEST_DIRNAME"
 
   for test_file in test-*.bats; do
     [ -f "$test_file" ] || continue
 
-    if ! grep -q "setup_nonsequential_test" "$test_file"; then
-      echo "FAIL: Non-sequential test $test_file doesn't call setup_nonsequential_test()" >&2
+    # Check for either setup_nonsequential_test() or ensure_foundation()
+    # ensure_foundation() is the newer, simpler pattern for tests that only need foundation
+    if ! grep -q "setup_nonsequential_test\|ensure_foundation" "$test_file"; then
+      echo "FAIL: Non-sequential test $test_file doesn't call setup_nonsequential_test() or ensure_foundation()" >&2
       return 1
     fi
   done
@@ -188,7 +193,7 @@ teardown_file() {
 
   # Verify README.pids.md exists and contains key information
   if [ ! -f "README.pids.md" ]; then
-    echo "FAIL: tests-bats/README.pids.md is missing" >&2
+    echo "FAIL: tests/README.pids.md is missing" >&2
     echo "This file documents our PID safety mechanism and BATS process model" >&2
     return 1
   fi

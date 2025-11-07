@@ -4,20 +4,148 @@ This file provides guidance for AI assistants (like Claude Code) when working wi
 
 ## Critical Architecture Understanding
 
-### The Sequential State Building Pattern
+### The Foundation and Sequential Test Pattern
 
-The most important concept to understand is how sequential tests build state:
+The test system has three layers based on filename patterns:
+
+**Foundation (foundation.bats)**:
+- Creates the base TEST_REPO (clone + setup.sh + template files)
+- Runs in `.envs/foundation/` environment
+- All other tests depend on this
+- Built once, then copied to other environments for speed
+
+**Sequential Tests (Pattern: `[0-9][0-9]-*.bats`)**:
+- Tests numbered 00-99 (e.g., 00-validate-tests.bats, 01-meta.bats, 02-dist.bats)
+- Run in numeric order, each building on previous test's work
+- Share state in `.envs/sequential/` environment
+- Each test **assumes** previous tests completed successfully
+- Example: 02-dist.bats expects META.json to exist from 01-meta.bats
+
+**Independent Tests (Pattern: `test-*.bats`)**:
+- Tests starting with "test-" (e.g., test-doc.bats, test-dist-clean.bats)
+- Get their own isolated environment (named after test)
+- Copy foundation TEST_REPO as starting point
+- No dependencies on sequential tests
+- Can potentially run in parallel (future enhancement)
+
+### Distribution Testing Pattern (Dual Test Strategy)
+
+The distribution system is tested by TWO different tests that validate `make dist` works correctly under different conditions:
+
+**Independent dist test (test-dist-clean.bats or similar)**:
+- Tests `make dist` from a completely clean foundation
+- Verifies `make dist` has correct dependencies (builds docs automatically)
+- Validates that starting from scratch produces correct distribution
+- **Critical insight**: This proves `make dist` doesn't depend on prior `make` commands
+
+**Sequential dist test (02-dist.bats or similar)**:
+- Tests `make dist` after other operations (like META.json generation)
+- Verifies `make dist` fails correctly with untracked/uncommitted files
+- Tests same extension after build/html targets have run
+- **Critical insight**: Distribution should be identical regardless of prior operations
+
+**Why both are needed**:
+1. Extensions must support `git clone → make dist` (clean checkout workflow)
+2. Extensions must also support repeated `make dist` during development
+3. Both scenarios should produce identical distributions
+4. `make dist` must enforce clean repo (no untracked files) to prevent incomplete distributions
+
+**Foundation Setup for Distribution Testing**:
+
+Foundation includes critical setup that makes TEST_REPO behave like a real extension:
+
+1. **Template files are committed** (test 19-20):
+   - Copies doc/, sql/, test/input/ from t/ to root
+   - Commits these files to git
+   - **Why**: In real extensions, source files are tracked in git
+   - **Impact**: Makes `make dist` work (git archive needs tracked files)
+
+2. **Generated files are ignored** (test 21):
+   - Adds `*.html` to .gitignore
+   - **Why**: Documentation is built during `make dist` (prerequisite: html target)
+   - **Impact**: Allows dist to build docs without making repo dirty
+   - **Critical**: Without this, `make dist` would fail (requires clean repo)
+
+**The Clean Repo Requirement**:
+
+`make dist` enforces repository cleanliness via `git status --porcelain` check:
+- Fails if there are untracked files
+- Fails if there are uncommitted changes
+- **Why**: Ensures distributions don't accidentally omit or include wrong files
+- **Tests**: Sequential dist test validates both failure modes explicitly
+
+**Distribution Name Extraction**:
+
+Both dist tests dynamically extract the distribution name from META.json:
+```bash
+DISTRIBUTION_NAME=$(grep '"name"' "$TEST_REPO/META.json" | sed 's/.*"name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
+```
+
+**Why dynamic**: 01-meta modifies META.json, changing the name from template value to actual value. Tests must use the actual value, not hardcode it.
+
+**Dual Distribution Validation Strategy**:
+
+Distribution contents are validated using TWO complementary approaches:
+
+**1. Exact File Manifest (PRIMARY) - dist-expected-files.txt**:
+- Lists EXACT files that should appear in distributions
+- Source of truth for distribution contents
+- Any change to distributions will be caught here
+- Located at `tests/dist-expected-files.txt`
+- Includes comments explaining known issues (TODO items)
+
+**2. Pattern-Based Validation (SAFETY NET) - dist-files.bash**:
+- Validates using patterns and rules
+- Checks for required files (control, META.json, Makefile, SQL, pgxntool)
+- Checks for expected files (documentation, tests)
+- Ensures excluded files are absent (git metadata, build artifacts)
+- Validates structure (single top-level directory per PGXN requirements)
+
+**Why both approaches**:
+- **Exact manifest**: Catches any unexpected changes (additions or removals)
+- **Pattern validation**: Ensures critical requirements met even if manifest gets out of sync
+- **Together**: Belt-and-suspenders - if manifest is stale, pattern validation catches critical issues
+
+**Functions provided in dist-files.bash**:
+
+1. **`validate_exact_distribution_contents()`** - Compare against manifest
+   ```bash
+   run validate_exact_distribution_contents "$DIST_FILE"
+   [ "$status" -eq 0 ]
+   ```
+
+2. **`validate_distribution_contents()`** - Pattern-based validation
+   ```bash
+   run validate_distribution_contents "$DIST_FILE"
+   [ "$status" -eq 0 ]
+   ```
+
+3. **`get_distribution_files()`** - Helper to extract file list for custom checks
+
+**When to update dist-expected-files.txt**:
+- After intentional changes to what goes in distributions
+- After adding/removing files in foundation or pgxntool
+- After fixing distribution issues (like excluding .claude/)
+- **CRITICAL**: Never update blindly - investigate why contents changed
+
+**Testing Make Target Interactions (Sequential dist test)**:
+
+The sequential dist test runs make targets BEFORE `make dist` to ensure they don't break distribution creation:
 
 ```
-00-validate-tests → sequential env, no repo work
-01-clone         → sequential env, creates TEST_REPO
-02-setup         → sequential env, runs setup.sh in TEST_REPO
-03-meta          → sequential env, validates META.json generation
-04-dist          → sequential env, creates distribution zip
-05-setup-final   → sequential env, final validation
+make           → builds extension
+make html      → builds documentation
+git status     → verifies repo still clean
+make dist      → creates distribution
 ```
 
-Each test **assumes** the previous test's work is complete. Test 03 expects TEST_REPO to exist with a configured Makefile. If the environment is clean, those assumptions break.
+**Why this matters**: Proves that common development workflows (build → dist) work correctly and don't leave repository in a state that breaks `make dist`.
+
+**Known Issues / TODOs**:
+
+1. **t/ directory in distributions**: Currently distributions include the t/ directory from the template repository. In real extensions, files would be at root level, not in t/. This should be cleaned up - either remove t/ after copying files, or exclude it from distributions.
+
+2. **.claude/ directory in distributions**: The .claude/ directory (Claude Code settings) should not be included in distributions. Can use git's `export-ignore` attribute in .gitattributes to exclude from `git archive`.
 
 ### The Pollution Detection Contract
 
@@ -25,7 +153,7 @@ Each test **assumes** the previous test's work is complete. Test 03 expects TEST
 
 State becomes invalid when:
 1. **Incomplete execution**: Test started but crashed (`.start-*` exists but no `.complete-*`)
-2. **Out-of-order execution**: Running tests 01-03 after a previous run that completed 01-05 leaves state from tests 04-05
+2. **Out-of-order execution**: Running tests 01-02 after a previous run that completed 01-03 leaves state from test 03
 
 When pollution is detected, `setup_sequential_test()` rebuilds the world:
 1. Clean environment completely
@@ -56,7 +184,7 @@ The legacy test system (tests/* scripts) uses lib.sh which provides:
 - Redirection functions for capturing test output
 - These are designed for capturing entire test output to log files
 
-**BATS tests have their own infrastructure** in tests-bats/helpers.bash:
+**BATS tests have their own infrastructure** in tests/helpers.bash:
 - Output functions that use file descriptor 3 (BATS requirement)
 - Variable setup functions (setup_pgxntool_vars) extracted from lib.sh
 - No file descriptor redirection (BATS handles this internally)
@@ -164,7 +292,7 @@ debug 5 "Full state: $state_contents"           # Verbose
 - **4**: Reserved for future use
 - **5**: Maximum verbosity, full traces
 
-**Enable with**: `DEBUG=2 test/bats/bin/bats tests-bats/01-clone.bats`
+**Enable with**: `DEBUG=2 test/bats/bin/bats tests/foundation.bats`
 
 **Critical Rules**:
 1. **Never use `echo` directly** - always use `out()`, `error()`, or `debug()`
@@ -268,7 +396,7 @@ Result: Breaks pollution detection, other tests fail mysteriously.
 load helpers
 
 setup_file() {
-  setup_sequential_test "06-new-feature" "05-setup-final"
+  setup_sequential_test "06-new-feature" "03-setup-final"
 }
 
 setup() {
@@ -289,7 +417,7 @@ teardown_file() {
 **Bad**:
 ```bash
 setup_file() {
-  setup_sequential_test "02-setup" "01-clone"
+  setup_sequential_test "foundation" "foundation"
 }
 
 setup() {
@@ -311,7 +439,7 @@ setup() {
 **Bad**:
 ```bash
 setup_file() {
-  setup_sequential_test "03-meta" "02-setup"
+  setup_sequential_test "01-meta" "foundation"
 }
 
 setup() {
@@ -329,7 +457,7 @@ setup() {
 **Good**:
 ```bash
 teardown_file() {
-  mark_test_complete "03-meta"  # Always add this
+  mark_test_complete "01-meta"  # Always add this
 }
 ```
 
@@ -339,24 +467,24 @@ teardown_file() {
 ```bash
 setup_file() {
   # Test 04 depends on 03, but doesn't list it
-  setup_sequential_test "04-dist" "01-clone"
+  setup_sequential_test "02-dist" "foundation"
 }
 ```
 
-**Why bad**: If environment is polluted and rebuilt, prerequisites are re-run. But this only re-runs 01-clone, not 02-setup or 03-meta. Test fails because META.json doesn't exist.
+**Why bad**: If environment is polluted and rebuilt, prerequisites are re-run. But this only re-runs foundation, not foundation or 01-meta. Test fails because META.json doesn't exist.
 
 **Good**:
 ```bash
 setup_file() {
   # List immediate prerequisite (system will check it recursively)
-  setup_sequential_test "04-dist" "03-meta"
+  setup_sequential_test "02-dist" "01-meta"
 }
 ```
 
 Or if you want to be explicit about the full chain:
 ```bash
 setup_file() {
-  setup_sequential_test "04-dist" "01-clone" "02-setup" "03-meta"
+  setup_sequential_test "02-dist" "foundation" "foundation" "01-meta"
 }
 ```
 
@@ -383,12 +511,12 @@ setup_file() {
 **Steps**:
 1. **Choose number**: Next in sequence (e.g., if 05 exists, use 06)
 2. **Create file**: `0X-descriptive-name.bats`
-3. **Copy template** from existing test (e.g., 03-meta.bats)
+3. **Copy template** from existing test (e.g., 01-meta.bats)
 4. **Update setup_file**:
    - Change test name
    - List immediate prerequisite
 5. **Write tests**: Use semantic assertions
-6. **Test individually**: `test/bats/bin/bats tests-bats/0X-name.bats`
+6. **Test individually**: `test/bats/bin/bats tests/0X-name.bats`
 7. **Test in sequence**: Run full suite
 
 **Template**:
@@ -431,7 +559,7 @@ load helpers
 
 setup_file() {
   # Run prerequisites: clone → setup → meta
-  setup_independent_test "test-feature" "feature" "01-clone" "02-setup" "03-meta"
+  setup_independent_test "test-feature" "feature" "foundation" "foundation" "01-meta"
 }
 
 setup() {
@@ -510,7 +638,7 @@ done
 ```bash
 # Clean and try again
 rm -rf .envs/
-test/bats/bin/bats tests-bats/01-clone.bats
+test/bats/bin/bats tests/foundation.bats
 ```
 
 ### Test Fails: "TEST_REPO not found"
@@ -534,9 +662,9 @@ test/bats/bin/bats tests-bats/01-clone.bats
 **Example**:
 ```bash
 # This passes (auto-runs prerequisites):
-test/bats/bin/bats tests-bats/04-dist.bats
+test/bats/bin/bats tests/02-dist.bats
 
-# But when run after 03-meta fails, 04 also fails
+# But when run after 01-meta fails, 04 also fails
 # because it assumed 03 completed
 ```
 
@@ -556,7 +684,7 @@ test/bats/bin/bats tests-bats/04-dist.bats
 **Debug**:
 ```bash
 # Add debug output
-DEBUG=5 test/bats/bin/bats tests-bats/02-setup.bats
+DEBUG=5 test/bats/bin/bats tests/foundation.bats
 
 # Check what detect_dirty_state sees
 cd .envs/sequential/.bats-state
@@ -612,75 +740,75 @@ If test B depends on A, and test C depends on B:
 ### Scenario 1: Clean Run (No Existing State)
 
 ```
-User: test/bats/bin/bats tests-bats/03-meta.bats
+User: test/bats/bin/bats tests/01-meta.bats
 
-03-meta setup_file():
-  ├─ setup_sequential_test("03-meta", "02-setup")
+01-meta setup_file():
+  ├─ setup_sequential_test("01-meta", "foundation")
   ├─ load_test_env("sequential")
   │  └─ Environment doesn't exist, creates it
-  ├─ detect_dirty_state("03-meta")
+  ├─ detect_dirty_state("01-meta")
   │  └─ No state markers, returns 0 (clean)
-  ├─ Check prerequisite "02-setup"
-  │  └─ .complete-02-setup missing
-  ├─ Run prerequisite: bats 02-setup.bats
-  │  ├─ 02-setup setup_file()
-  │  ├─ Check prerequisite "01-clone"
-  │  │  └─ .complete-01-clone missing
-  │  ├─ Run prerequisite: bats 01-clone.bats
+  ├─ Check prerequisite "foundation"
+  │  └─ .complete-foundation missing
+  ├─ Run prerequisite: bats foundation.bats
+  │  ├─ foundation setup_file()
+  │  ├─ Check prerequisite "foundation"
+  │  │  └─ .complete-foundation missing
+  │  ├─ Run prerequisite: bats foundation.bats
   │  │  ├─ Creates TEST_REPO
   │  │  ├─ Marks complete
   │  │  └─ Returns success
   │  ├─ Runs setup.sh
   │  ├─ Marks complete
   │  └─ Returns success
-  └─ mark_test_start("03-meta")
+  └─ mark_test_start("01-meta")
 
-03-meta runs tests...
+01-meta runs tests...
 
-03-meta teardown_file():
-  └─ mark_test_complete("03-meta")
+01-meta teardown_file():
+  └─ mark_test_complete("01-meta")
 ```
 
 ### Scenario 2: Reusing Existing State
 
 ```
-User: test/bats/bin/bats tests-bats/03-meta.bats
-(State from previous run exists: .complete-01-clone, .complete-02-setup)
+User: test/bats/bin/bats tests/01-meta.bats
+(State from previous run exists: .complete-foundation, .complete-foundation)
 
-03-meta setup_file():
+01-meta setup_file():
   ├─ load_test_env("sequential")
   │  └─ Environment exists, loads it
-  ├─ detect_dirty_state("03-meta")
+  ├─ detect_dirty_state("01-meta")
   │  └─ No pollution detected, returns 0 (clean)
-  ├─ Check prerequisite "02-setup"
-  │  └─ .complete-02-setup exists, skip
-  └─ mark_test_start("03-meta")
+  ├─ Check prerequisite "foundation"
+  │  └─ .complete-foundation exists, skip
+  └─ mark_test_start("01-meta")
 
-03-meta runs tests...
+01-meta runs tests...
 ```
 
 ### Scenario 3: Pollution Detected
 
 ```
-User: test/bats/bin/bats tests-bats/02-setup.bats
-(State from previous full run exists: .complete-01-clone through .complete-05-setup-final)
+User: test/bats/bin/bats tests/foundation.bats
+(State from previous full run exists: .complete-foundation through .complete-03-setup-final)
 
-02-setup setup_file():
+foundation setup_file():
   ├─ load_test_env("sequential")
-  ├─ detect_dirty_state("02-setup")
-  │  ├─ Check test order: 01-clone, 02-setup, 03-meta, 04-dist, 05-setup-final
-  │  ├─ Current test: 02-setup
-  │  ├─ Tests after 02-setup: 03-meta, 04-dist, 05-setup-final
-  │  ├─ Check: .start-03-meta exists? YES
+  ├─ detect_dirty_state("foundation")
+  │  ├─ Check test order: foundation, foundation, 01-meta, 02-dist, 03-setup-final
+  │  ├─ Current test: foundation
+  │  ├─ Tests after foundation: 01-meta, 02-dist, 03-setup-final
+  │  ├─ Check: .start-01-meta exists? YES
   │  └─ POLLUTION DETECTED, return 1
   ├─ Environment polluted!
   ├─ clean_env("sequential")
   ├─ load_test_env("sequential")  # Recreates
-  ├─ Run prerequisite: bats 01-clone.bats
+  ├─ Run prerequisite: bats foundation.bats
   │  └─ Rebuilds from scratch
-  └─ mark_test_start("02-setup")
+  └─ mark_test_start("foundation")
 
-02-setup runs tests with clean state...
+foundation runs tests with clean state...
 ```
 
 ## When to Use Sequential vs Independent
@@ -722,26 +850,26 @@ Before committing changes to test system:
 ```bash
 # 1. Clean full run
 rm -rf .envs/
-for test in tests-bats/0*.bats; do
+for test in tests/0*.bats; do
   test/bats/bin/bats "$test" || exit 1
 done
 
 # 2. Rerun (should reuse state)
-for test in tests-bats/0*.bats; do
+for test in tests/0*.bats; do
   test/bats/bin/bats "$test" || exit 1
 done
 
 # 3. Partial rerun (should detect pollution)
 rm -rf .envs/
-test/bats/bin/bats tests-bats/01-clone.bats
-test/bats/bin/bats tests-bats/02-setup.bats
-test/bats/bin/bats tests-bats/03-meta.bats
+test/bats/bin/bats tests/foundation.bats
+test/bats/bin/bats tests/foundation.bats
+test/bats/bin/bats tests/01-meta.bats
 # Now run earlier test (should detect pollution)
-test/bats/bin/bats tests-bats/02-setup.bats
+test/bats/bin/bats tests/foundation.bats
 
 # 4. Individual test (should auto-run prerequisites)
 rm -rf .envs/
-test/bats/bin/bats tests-bats/04-dist.bats
+test/bats/bin/bats tests/02-dist.bats
 ```
 
 ### Debug Checklist
@@ -750,7 +878,7 @@ When test fails:
 1. [ ] Check state markers: `ls -la .envs/sequential/.bats-state/`
 2. [ ] Check PID files: Any stale? Any actually running?
 3. [ ] Check test environment: Does TEST_REPO exist? Contains expected files?
-4. [ ] Run with debug: `DEBUG=5 test/bats/bin/bats tests-bats/XX-test.bats`
+4. [ ] Run with debug: `DEBUG=5 test/bats/bin/bats tests/XX-test.bats`
 5. [ ] Check prerequisites: Do they pass individually?
 6. [ ] Check git status: Is repo dirty? Any uncommitted changes?
 
@@ -818,5 +946,5 @@ Only independent tests can run in parallel (future feature).
 When in doubt, read the code in:
 - `helpers.bash:detect_dirty_state()` - Pollution detection logic
 - `helpers.bash:setup_sequential_test()` - Sequential test setup
-- `01-clone.bats` - Simplest sequential test example
+- `foundation.bats` - Simplest sequential test example
 - `test-doc.bats` - Independent test example (when it exists)

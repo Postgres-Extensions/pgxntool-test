@@ -10,11 +10,13 @@
 load helpers
 
 setup_file() {
-  # Non-sequential test - gets its own isolated environment
-  # **CRITICAL**: This test DEPENDS on sequential tests completing first!
-  # It copies the completed sequential environment, then tests make test functionality.
-  # Only need to specify final prereq - it will handle its dependencies recursively
-  setup_nonsequential_test "test-make-test" "make-test" "05-setup-final"
+  # Set TOPDIR
+  cd "$BATS_TEST_DIRNAME/.."
+  export TOPDIR=$(pwd)
+
+  # Independent test - gets its own isolated environment with foundation TEST_REPO
+  load_test_env "make-test"
+  ensure_foundation "$TEST_DIR"
 }
 
 setup() {

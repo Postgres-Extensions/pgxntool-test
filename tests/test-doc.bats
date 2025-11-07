@@ -57,11 +57,13 @@ setup_file() {
     skip "asciidoc or asciidoctor not found"
   fi
 
-  # Non-sequential test - gets its own isolated environment
-  # **CRITICAL**: This test DEPENDS on sequential tests completing first!
-  # It copies the completed sequential environment, then tests documentation generation.
-  # Prerequisites: Need 05-setup-final which copies t/doc/* to doc/*
-  setup_nonsequential_test "test-doc" "doc" "05-setup-final"
+  # Set TOPDIR
+  cd "$BATS_TEST_DIRNAME/.."
+  export TOPDIR=$(pwd)
+
+  # Independent test - gets its own isolated environment with foundation TEST_REPO
+  load_test_env "doc"
+  ensure_foundation "$TEST_DIR"
 }
 
 setup() {

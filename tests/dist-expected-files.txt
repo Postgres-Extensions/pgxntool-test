@@ -1,0 +1,95 @@
+# Expected Distribution File Manifest
+#
+# This file lists the EXACT files that should appear in distributions
+# created by pgxntool-test-template after running foundation setup.
+#
+# CRITICAL: This is the source of truth for distribution contents.
+# If this file changes, it indicates a change to what pgxntool distributes.
+#
+# Format: One file per line, relative paths (no prefix directory)
+# Directories end with /
+# Lines starting with # are comments
+# Blank lines are ignored
+#
+# KNOWN ISSUES (TODO):
+# - .claude/ directories should be excluded (via .gitattributes export-ignore)
+# - t/ directory duplication should be resolved (files are at root AND in t/)
+#
+# Last updated: During foundation + template file setup
+
+# Root-level configuration and metadata
+.gitignore
+CLAUDE.md
+Makefile
+META.in.json
+META.json
+pgxntool-test.control
+TEST_DOC.asc
+
+# TODO: Should be excluded from distributions
+.claude/
+.claude/settings.json
+
+# Documentation (root level, copied from t/)
+doc/
+doc/adoc_doc.adoc
+doc/asc_doc.asc
+doc/asciidoc_doc.asciidoc
+doc/other.html
+
+# Extension SQL files (root level, copied from t/)
+sql/
+sql/pgxntool-test--0.1.0--0.1.1.sql
+sql/pgxntool-test.sql
+
+# Test files (root level, copied from t/)
+test/
+test/deps.sql
+test/input/
+test/input/pgxntool-test.source
+test/pgxntool
+
+# TODO: Template directory (should this be in distributions?)
+# In real extensions, these files would be at root only, not duplicated in t/
+t/
+t/.gitignore
+t/doc/
+t/doc/adoc_doc.adoc
+t/doc/asc_doc.asc
+t/doc/asciidoc_doc.asciidoc
+t/doc/other.html
+t/sql/
+t/sql/pgxntool-test--0.1.0--0.1.1.sql
+t/sql/pgxntool-test.sql
+t/TEST_DOC.asc
+t/test/
+t/test/input/
+t/test/input/pgxntool-test.source
+
+# pgxntool framework (the build system itself)
+pgxntool/
+pgxntool/_.gitignore
+pgxntool/.gitignore
+pgxntool/base.mk
+pgxntool/build_meta.sh
+pgxntool/JSON.sh
+pgxntool/JSON.sh.LICENSE
+pgxntool/LICENSE
+pgxntool/META.in.json
+pgxntool/meta.mk.sh
+pgxntool/safesed
+pgxntool/setup.sh
+pgxntool/WHAT_IS_THIS
+
+# pgxntool test infrastructure
+pgxntool/test/
+pgxntool/test/deps.sql
+pgxntool/test/pgxntool/
+pgxntool/test/pgxntool/finish.sql
+pgxntool/test/pgxntool/psql.sql
+pgxntool/test/pgxntool/setup.sql
+pgxntool/test/pgxntool/tap_setup.sql
+
+# TODO: Should be excluded from distributions
+pgxntool/.claude/
+pgxntool/.claude/settings.json

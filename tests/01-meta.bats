@@ -7,12 +7,22 @@
 load helpers
 
 setup_file() {
-  debug 1 ">>> ENTER setup_file: 03-meta (PID=$$)"
-  setup_sequential_test "03-meta" "02-setup"
+  debug 1 ">>> ENTER setup_file: 01-meta (PID=$$)"
+
+  # Set TOPDIR first
+  cd "$BATS_TEST_DIRNAME/.."
+  export TOPDIR=$(pwd)
+
+  # First sequential test - ensure foundation exists first
+  load_test_env "sequential"
+  ensure_foundation "$TEST_DIR"
+
+  # Now set up as sequential test (no prereq, we're first)
+  setup_sequential_test "01-meta"
 
   export DISTRIBUTION_NAME="distribution_test"
   export EXTENSION_NAME="pgxntool-test"
-  debug 1 "<<< EXIT setup_file: 03-meta (PID=$$)"
+  debug 1 "<<< EXIT setup_file: 01-meta (PID=$$)"
 }
 
 setup() {
@@ -21,9 +31,9 @@ setup() {
 }
 
 teardown_file() {
-  debug 1 ">>> ENTER teardown_file: 03-meta (PID=$$)"
-  mark_test_complete "03-meta"
-  debug 1 "<<< EXIT teardown_file: 03-meta (PID=$$)"
+  debug 1 ">>> ENTER teardown_file: 01-meta (PID=$$)"
+  mark_test_complete "01-meta"
+  debug 1 "<<< EXIT teardown_file: 01-meta (PID=$$)"
 }
 
 @test "META.in.json exists" {

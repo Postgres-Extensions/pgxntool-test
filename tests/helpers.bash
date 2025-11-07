@@ -268,7 +268,7 @@ is_clean_state() {
   done
 
   # Dynamically determine test order from directory (sorted)
-  local test_order=$(cd "$TOPDIR/tests-bats" && ls [0-9][0-9]-*.bats 2>/dev/null | sort | sed 's/\.bats$//' | xargs)
+  local test_order=$(cd "$TOPDIR/tests" && ls [0-9][0-9]-*.bats 2>/dev/null | sort | sed 's/\.bats$//' | xargs)
 
   debug 3 "is_clean_state: Test order: $test_order"
 
@@ -409,9 +409,31 @@ check_test_running() {
   fi
 }
 
-# Helper for sequential tests
+# Helper for sequential tests - sets up environment and ensures prerequisites
+#
+# Sequential tests build on each other's state:
+#   01-meta → 02-dist → 03-setup-final
+#
+# This function tracks prerequisites to enable running individual sequential tests.
+# When you run a single test file, it automatically runs any prerequisites first.
+#
+# Example:
+#   $ test/bats/bin/bats tests/02-dist.bats
+#   # Automatically runs 01-meta first if not already complete
+#
+# This is critical for development workflow - you can test any part of the sequence
+# without manually running earlier tests or maintaining test state yourself.
+#
+# The function also implements pollution detection: if tests run out of order or
+# a test crashes, it detects the invalid state and rebuilds from scratch.
+#
 # Usage: setup_sequential_test "test-name" ["immediate-prereq"]
 # Pass only ONE immediate prerequisite - it will handle its own dependencies recursively
+#
+# Examples:
+#   setup_sequential_test "01-meta"           # First test, no prerequisites
+#   setup_sequential_test "02-dist" "01-meta" # Depends on 01, which depends on foundation
+#   setup_sequential_test "03-setup-final" "02-dist" # Depends on 02 → 01 → foundation
 setup_sequential_test() {
   local test_name=$1
   local immediate_prereq=$2
@@ -450,13 +472,20 @@ setup_sequential_test() {
   if [ -n "$immediate_prereq" ]; then
     debug 2 "setup_sequential_test: Checking prereq $immediate_prereq"
     if [ ! -f "$TEST_DIR/.bats-state/.complete-$immediate_prereq" ]; then
+      # State marker doesn't exist - must run prerequisite
+      # Individual @test blocks will skip if work is already done
+      out "Running prerequisite: $immediate_prereq.bats"
       debug 2 "setup_sequential_test: Running prereq: bats $immediate_prereq.bats"
       # Run prereq (it handles its own deps recursively)
-      "$BATS_TEST_DIRNAME/../test/bats/bin/bats" "$BATS_TEST_DIRNAME/$immediate_prereq.bats" || {
+      # Filter stdout for TAP comments to FD3, leave stderr alone
+      "$BATS_TEST_DIRNAME/../test/bats/bin/bats" "$BATS_TEST_DIRNAME/$immediate_prereq.bats" | { grep '^#' || true; } >&3
+      local prereq_status=${PIPESTATUS[0]}
+      if [ $prereq_status -ne 0 ]; then
         out "ERROR: Prerequisite $immediate_prereq failed"
         rm -rf "$TEST_DIR/.bats-state/.lock-$test_name"
         return 1
-      }
+      fi
+      out "Prerequisite $immediate_prereq.bats completed"
     else
       debug 2 "setup_sequential_test: Prereq $immediate_prereq already complete"
     fi
@@ -532,9 +561,20 @@ setup_nonsequential_test() {
       fi
     fi
 
-    out "Running prerequisites..."
     for prereq in "${prereq_tests[@]}"; do
-      "$BATS_TEST_DIRNAME/../test/bats/bin/bats" "$BATS_TEST_DIRNAME/$prereq.bats" || return 1
+      # Check if prerequisite is already complete
+      local sequential_state_dir="$TOPDIR/.envs/sequential/.bats-state"
+      if [ -f "$sequential_state_dir/.complete-$prereq" ]; then
+        debug 3 "Prerequisite $prereq already complete, skipping"
+        continue
+      fi
+
+      # State marker doesn't exist - must run prerequisite
+      # Individual @test blocks will skip if work is already done
+      out "Running prerequisite: $prereq.bats"
+      "$BATS_TEST_DIRNAME/../test/bats/bin/bats" "$BATS_TEST_DIRNAME/$prereq.bats" | { grep '^#' || true; } >&3
+      [ ${PIPESTATUS[0]} -eq 0 ] || return 1
+      out "Prerequisite $prereq.bats completed"
     done
 
     # Copy the sequential TEST_REPO to this non-sequential test's environment
@@ -547,6 +587,114 @@ setup_nonsequential_test() {
   fi
 
   export TOPDIR TEST_REPO TEST_DIR
+}
+
+# ============================================================================
+# Foundation Management
+# ============================================================================
+
+# Ensure foundation environment exists and copy it to target environment
+#
+# The foundation is the base TEST_REPO that all tests depend on. It's created
+# once in .envs/foundation/ and then copied to other test environments for speed.
+#
+# This function:
+# 1. Checks if foundation exists (.envs/foundation/.bats-state/.foundation-complete)
+# 2. If foundation exists but is > 10 seconds old, warns it may be stale
+#    (important when testing changes to pgxntool itself)
+# 3. If foundation doesn't exist, runs foundation.bats to create it
+# 4. Copies foundation TEST_REPO to the target environment
+#
+# This allows any test to be run individually without manual setup - the test
+# will automatically ensure foundation exists before running.
+#
+# Usage:
+#   ensure_foundation "$TEST_DIR"
+#
+# Example in test file:
+#   setup_file() {
+#     load_test_env "my-test"
+#     ensure_foundation "$TEST_DIR"  # Ensures foundation exists and copies it
+#     # Now TEST_REPO exists and we can work with it
+#   }
+ensure_foundation() {
+  local target_dir="$1"
+  if [ -z "$target_dir" ]; then
+    error "ensure_foundation: target_dir required"
+  fi
+
+  local foundation_dir="$TOPDIR/.envs/foundation"
+  local foundation_state="$foundation_dir/.bats-state"
+  local foundation_complete="$foundation_state/.foundation-complete"
+
+  debug 2 "ensure_foundation: Checking foundation state"
+
+  # Check if foundation exists
+  if [ -f "$foundation_complete" ]; then
+    debug 3 "ensure_foundation: Foundation exists, checking age"
+
+    # Get current time and file modification time
+    local now=$(date +%s)
+    local mtime
+
+    # Try BSD stat first (macOS), then GNU stat (Linux)
+    if stat -f %m "$foundation_complete" >/dev/null 2>&1; then
+      mtime=$(stat -f %m "$foundation_complete")
+    elif stat -c %Y "$foundation_complete" >/dev/null 2>&1; then
+      mtime=$(stat -c %Y "$foundation_complete")
+    else
+      # stat not available or different format, skip age check
+      debug 3 "ensure_foundation: Cannot determine file age (stat unavailable)"
+      mtime=$now
+    fi
+
+    local age=$((now - mtime))
+    debug 3 "ensure_foundation: Foundation is $age seconds old"
+
+    if [ $age -gt 10 ]; then
+      out "WARNING: Foundation is $age seconds old, may be out of date."
+      out "         If you've modified pgxntool, run 'make foundation' to rebuild."
+    fi
+  else
+    debug 2 "ensure_foundation: Foundation doesn't exist, creating..."
+    out "Creating foundation environment..."
+
+    # Run foundation.bats to create it
+    "$BATS_TEST_DIRNAME/../test/bats/bin/bats" "$BATS_TEST_DIRNAME/foundation.bats" | { grep '^#' || true; } >&3
+    local status=${PIPESTATUS[0]}
+
+    if [ $status -ne 0 ]; then
+      error "Failed to create foundation environment"
+    fi
+
+    out "Foundation created successfully"
+  fi
+
+  # Copy foundation TEST_REPO to target environment
+  local foundation_repo="$foundation_dir/repo"
+  local target_repo="$target_dir/repo"
+
+  if [ ! -d "$foundation_repo" ]; then
+    error "Foundation repo not found at $foundation_repo"
+  fi
+
+  debug 2 "ensure_foundation: Copying foundation to $target_dir"
+  # Use rsync to avoid permission issues with git objects
+  rsync -a "$foundation_repo/" "$target_repo/"
+
+  if [ ! -d "$target_repo" ]; then
+    error "Failed to copy foundation repo to $target_repo"
+  fi
+
+  # Also copy fake_repo if it exists (needed for git push operations)
+  local foundation_fake="$foundation_dir/fake_repo"
+  local target_fake="$target_dir/fake_repo"
+  if [ -d "$foundation_fake" ]; then
+    debug 3 "ensure_foundation: Copying fake_repo"
+    rsync -a "$foundation_fake/" "$target_fake/"
+  fi
+
+  debug 3 "ensure_foundation: Foundation copied successfully"
 }
 
 # vi: expandtab sw=2 ts=2

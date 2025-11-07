@@ -308,23 +308,23 @@ setup() {
 ### Run All Tests (Sequential Order)
 ```bash
 cd /path/to/pgxntool-test
-test/bats/bin/bats tests-bats/00-validate-tests.bats
-test/bats/bin/bats tests-bats/01-clone.bats
-test/bats/bin/bats tests-bats/02-setup.bats
-test/bats/bin/bats tests-bats/03-meta.bats
-test/bats/bin/bats tests-bats/04-dist.bats
+test/bats/bin/bats tests/00-validate-tests.bats
+test/bats/bin/bats tests/01-clone.bats
+test/bats/bin/bats tests/02-setup.bats
+test/bats/bin/bats tests/03-meta.bats
+test/bats/bin/bats tests/04-dist.bats
 ```
 
 ### Run Single Test
 ```bash
 # Automatically runs prerequisites if needed
-test/bats/bin/bats tests-bats/03-meta.bats
+test/bats/bin/bats tests/03-meta.bats
 ```
 
 ### Run with Debug Output
 ```bash
-DEBUG=1 test/bats/bin/bats tests-bats/02-setup.bats  # Basic debug
-DEBUG=5 test/bats/bin/bats tests-bats/02-setup.bats  # Verbose debug
+DEBUG=1 test/bats/bin/bats tests/02-setup.bats  # Basic debug
+DEBUG=5 test/bats/bin/bats tests/02-setup.bats  # Verbose debug
 ```
 
 ### Clean Environments
@@ -416,7 +416,7 @@ cat META.json
 
 ### Run with Verbose Debug
 ```bash
-DEBUG=5 test/bats/bin/bats tests-bats/02-setup.bats
+DEBUG=5 test/bats/bin/bats tests/02-setup.bats
 ```
 
 ### Check for Pollution
@@ -471,7 +471,7 @@ The test includes a comment explaining this:
 **Fix**: Clean environments and re-run:
 ```bash
 rm -rf .envs/
-test/bats/bin/bats tests-bats/01-clone.bats
+test/bats/bin/bats tests/01-clone.bats
 ```
 
 ### Issue: "Cannot clean sequential - test X is still running"
@@ -493,8 +493,8 @@ test/bats/bin/bats tests-bats/01-clone.bats
 **Fix**: Check that prerequisites are declared and passing:
 ```bash
 # Run prerequisites manually
-test/bats/bin/bats tests-bats/01-clone.bats
-test/bats/bin/bats tests-bats/02-setup.bats
+test/bats/bin/bats tests/01-clone.bats
+test/bats/bin/bats tests/02-setup.bats
 ```
 
 ## Architecture Decisions
