@@ -36,13 +36,14 @@ setup_file() {
   load_test_env "dist-clean"
   ensure_foundation "$TEST_DIR"
 
-  # CRITICAL: Extract distribution name dynamically from META.json
+  # CRITICAL: Extract distribution name and version dynamically from META.json
   #
-  # Cannot hardcode "DISTRIBUTION_NAME" because foundation's META.json has the
-  # actual extension name. Must read from META.json to get correct distribution
+  # Cannot hardcode values because foundation's META.json has been configured
+  # with actual values. Must read from META.json to get correct distribution
   # filename (used by git archive in make dist).
-  export DISTRIBUTION_NAME=$(grep '"name"' "$TEST_REPO/META.json" | sed 's/.*"name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
-  export DIST_FILE="$TEST_DIR/${DISTRIBUTION_NAME}-0.1.0.zip"
+  export DISTRIBUTION_NAME=$(grep '"name"' "$TEST_REPO/META.json" | sed 's/.*"name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/' | head -1)
+  export VERSION=$(grep '"version"' "$TEST_REPO/META.json" | sed 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/' | head -1)
+  export DIST_FILE="$TEST_DIR/${DISTRIBUTION_NAME}-${VERSION}.zip"
 }
 
 setup() {
@@ -60,7 +61,7 @@ setup() {
 
   # Clean up any existing version branch (from previous runs)
   # make dist creates a branch with the version number, and will fail if it exists
-  git branch -D 0.1.0 2>/dev/null || true
+  git branch -D "$VERSION" 2>/dev/null || true
 
   # Also clean up any previous distribution file
   rm -f "$DIST_FILE"

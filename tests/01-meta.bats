@@ -2,7 +2,18 @@
 
 # Test: META.json generation
 #
-# Tests that META.in.json → META.json generation works correctly
+# This is the first sequential test that actually uses the test environment (TEST_REPO).
+# Test 00-validate-tests is technically first but only validates test file structure
+# (see comments in 00-validate-tests.bats for why it's sequential but doesn't use the environment).
+#
+# Since this is the first test to use TEST_REPO, it's responsible for copying the
+# foundation environment (.envs/foundation/repo) to the sequential environment
+# (.envs/sequential/repo). All later sequential tests (02-dist, 03-setup-final)
+# build on this copied TEST_REPO.
+#
+# Tests that META.in.json → META.json generation works correctly.
+# Foundation already replaced placeholders, so we test the regeneration
+# mechanism by modifying a different field and verifying META.json updates.
 
 load helpers
 
@@ -13,15 +24,21 @@ setup_file() {
   cd "$BATS_TEST_DIRNAME/.."
   export TOPDIR=$(pwd)
 
-  # First sequential test - ensure foundation exists first
-  load_test_env "sequential"
+  # Set up as sequential test with foundation prerequisite
+  # setup_sequential_test handles pollution detection and runs foundation if needed
+  setup_sequential_test "01-meta" "foundation"
+
+  # CRITICAL: Copy foundation repo to sequential environment
+  # This is the ONLY sequential test that should do this, because it's the first
+  # one to actually use TEST_REPO. Later sequential tests (02-dist, etc.) depend
+  # on 01-meta, not foundation directly, so they reuse this copied repo.
+  #
+  # Why ensure_foundation and not just copy?
+  # - Handles case where foundation already ran but sequential/repo doesn't exist
+  # - Checks foundation age and warns if stale (important when testing pgxntool changes)
+  # - Creates foundation if it doesn't exist
   ensure_foundation "$TEST_DIR"
 
-  # Now set up as sequential test (no prereq, we're first)
-  setup_sequential_test "01-meta"
-
-  export DISTRIBUTION_NAME="distribution_test"
-  export EXTENSION_NAME="pgxntool-test"
   debug 1 "<<< EXIT setup_file: 01-meta (PID=$$)"
 }
 
@@ -41,27 +58,35 @@ teardown_file() {
 }
 
 @test "can modify META.in.json" {
-  # Check if already modified
-  if grep -q "$DISTRIBUTION_NAME" META.in.json; then
+  # Check if we've already modified the version field
+  if grep -q '"version": "0.1.1"' META.in.json; then
     skip "META.in.json already modified"
   fi
 
   # Sleep to ensure timestamp changes
   sleep 1
 
-  # Modify META.in.json
-  sed -i '' -e "s/DISTRIBUTION_NAME/$DISTRIBUTION_NAME/" -e "s/EXTENSION_NAME/$EXTENSION_NAME/" META.in.json
+  # Modify a field to test regeneration (change version from 0.1.0 to 0.1.1)
+  #
+  # WARNING: In a real extension, bumping the version without creating an upgrade script
+  # (extension--0.1.0--0.1.1.sql) would be bad practice. PostgreSQL extensions need upgrade
+  # scripts to migrate data/schema between versions. For testing purposes this is fine since
+  # we're only validating META.json regeneration, not actual extension upgrade behavior.
+  #
+  # TODO: pgxntool should arguably check for missing upgrade scripts when version changes
+  # and warn/error, but currently it doesn't perform this validation.
+  #
+  # Note: sed -i.bak + rm is the simplest portable solution (works on macOS BSD sed and GNU sed)
+  # BSD sed requires an extension argument (can't do just -i), GNU sed allows it
+  sed -i.bak 's/"version": "0.1.0"/"version": "0.1.1"/' META.in.json
+  rm -f META.in.json.bak
 
-  # Verify changes
-  grep -q "$DISTRIBUTION_NAME" META.in.json
-  grep -q "$EXTENSION_NAME" META.in.json
+  # Verify change
+  grep -q '"version": "0.1.1"' META.in.json
 }
 
 @test "make regenerates META.json from META.in.json" {
-  # Save original META.json timestamp
-  local before=$(stat -f %m META.json 2>/dev/null || echo "0")
-
-  # Run make (should regenerate META.json)
+  # Run make (should regenerate META.json because META.in.json changed)
   run make
   [ "$status" -eq 0 ]
 
@@ -70,9 +95,8 @@ teardown_file() {
 }
 
 @test "META.json contains changes from META.in.json" {
-  # Verify that our changes made it through
-  grep -q "$DISTRIBUTION_NAME" META.json
-  grep -q "$EXTENSION_NAME" META.json
+  # Verify that our version change made it through to META.json
+  grep -q '"version": "0.1.1"' META.json
 }
 
 @test "META.json is valid JSON" {

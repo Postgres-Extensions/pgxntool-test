@@ -13,16 +13,23 @@ Create a git commit following all project standards and safety protocols for pgx
 
 2. **Commit Attribution**: Do NOT add "Generated with Claude Code" to commit message body. The standard Co-Authored-By trailer is acceptable per project CLAUDE.md.
 
-3. **Testing**: Ensure tests pass before committing:
-   - Run `make test` and verify all tests pass
+3. **Testing**: ALL tests must pass before committing:
+   - Run `make test`
+   - Check the output carefully for any "not ok" lines
+   - Count passing vs total tests
+   - **If ANY tests fail: STOP. Do NOT commit. Ask the user what to do.**
+   - There is NO such thing as an "acceptable" failing test
+   - Do NOT rationalize failures as "pre-existing" or "unrelated"
 
 **WORKFLOW:**
 
 1. Run in parallel: `git status`, `git diff --stat`, `git log -10 --oneline`
 
-2. Check test status:
-   - Run `make test` and verify all tests pass
-   - NEVER commit with failing tests
+2. Check test status - THIS IS MANDATORY:
+   - Run `make test 2>&1 | tee /tmp/test-output.txt`
+   - Check for failing tests: `grep "^not ok" /tmp/test-output.txt`
+   - If ANY tests fail: STOP immediately and inform the user
+   - Only proceed if ALL tests pass
 
 3. Analyze changes and draft concise commit message following this repo's style:
    - Look at `git log -10 --oneline` to match existing style

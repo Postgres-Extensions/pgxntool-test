@@ -242,6 +242,17 @@ is_clean_state() {
 
   [ -d "$state_dir" ] || { debug 3 "is_clean_state: No state dir, clean"; return 0; }
 
+  # Check if current test is re-running itself (already completed in this environment)
+  # This catches re-runs but preserves normal prerequisite recursion (03 running 02 as prerequisite is fine)
+  if [ -f "$state_dir/.complete-$current_test" ]; then
+    debug 1 "POLLUTION DETECTED: $current_test already completed in this environment"
+    debug 1 "  Completed: $(cat "$state_dir/.complete-$current_test")"
+    debug 1 "  Re-running a completed test pollutes environment with side effects"
+    out "Environment polluted: $current_test already completed here (re-run detected)"
+    out "  Completed: $(cat "$state_dir/.complete-$current_test")"
+    return 1  # Dirty!
+  fi
+
   # Check for incomplete tests (started but not completed)
   # NOTE: We DO check the current test. If .start-<current> exists when we're
   # starting up, it means a previous run didn't complete (crashed or was killed).

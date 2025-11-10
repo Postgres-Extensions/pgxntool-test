@@ -12,13 +12,16 @@ load helpers
 
 setup_file() {
   debug 1 ">>> ENTER setup_file: 00-validate-tests (PID=$$)"
-  # This is the first sequential test (00), no prerequisites
+  # This is the first sequential test (00), but it doesn't use the test environment
   #
   # IMPORTANT: This test doesn't actually use the test environment (TEST_REPO, etc.)
   # since it only validates test file structure by reading .bats files from disk.
   # However, it MUST still follow sequential test rules (setup_sequential_test,
   # mark_test_complete) because its filename matches the [0-9][0-9]-*.bats pattern.
   # If it didn't follow these rules, it would break pollution detection and test ordering.
+  #
+  # Test 01-meta is the first sequential test to actually use the test environment.
+  # See comments in 01-meta.bats for how it copies foundation to the sequential environment.
   setup_sequential_test "00-validate-tests"
   debug 1 "<<< EXIT setup_file: 00-validate-tests (PID=$$)"
 }

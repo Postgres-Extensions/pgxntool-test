@@ -78,18 +78,39 @@ Tests are organized by filename patterns:
 ## Common Commands
 
 ```bash
-make test              # Run all tests
-make test-clone        # Run clone test (foundation)
-make test-setup        # Run setup test
-make test-meta         # Run meta test
-# Individual tests auto-run prerequisites if needed
+# Run all tests
+# NOTE: If git repo is dirty (uncommitted changes), automatically runs make test-recursion
+# instead to validate test infrastructure changes don't break prerequisites/pollution detection
+make test
 
-# Run multiple tests in sequence (example with actual test files)
+# Test recursion and pollution detection with clean environment
+# Runs one independent test which auto-runs foundation as prerequisite
+# Useful for validating test infrastructure changes work correctly
+make test-recursion
+
+# Run individual test files (they auto-run prerequisites if needed)
 test/bats/bin/bats tests/foundation.bats
 test/bats/bin/bats tests/01-meta.bats
 test/bats/bin/bats tests/02-dist.bats
 test/bats/bin/bats tests/03-setup-final.bats
 ```
+
+### Smart Test Execution
+
+`make test` automatically detects if test code has uncommitted changes:
+
+- **Clean repo**: Runs full test suite (all sequential and independent tests)
+- **Dirty repo**: Runs `make test-recursion` FIRST, then runs full test suite
+
+This is critical because changes to test code (helpers.bash, test files, etc.) might break the prerequisite or pollution detection systems. Running test-recursion first exercises these systems by:
+1. Starting with completely clean environments
+2. Running an independent test that must auto-run foundation
+3. Validating that recursion and pollution detection work correctly
+4. If recursion is broken, we want to know immediately before running all tests
+
+**Why this matters**: If you modify pollution detection or prerequisite logic and break it, you need to know immediately. Running the full test suite won't catch some bugs (like broken re-run detection) because tests run fresh. test-recursion specifically tests the recursion system itself.
+
+**Why run it first**: If test infrastructure is broken, we want to fail fast and see the specific recursion failure, not wade through potentially hundreds of test failures caused by the broken infrastructure
 
 ## File Structure
 

@@ -29,16 +29,16 @@ setup_file() {
   debug 1 ">>> ENTER setup_file: 02-dist (PID=$$)"
   setup_sequential_test "02-dist" "01-meta"
 
-  # CRITICAL: Extract distribution name dynamically from META.json
+  # CRITICAL: Extract distribution name and version dynamically from META.json
   #
-  # WHY DYNAMIC: The 01-meta test modifies META.json, changing values from
-  # template placeholders (like "DISTRIBUTION_NAME") to actual values (like
-  # "distribution_test"). We must read the actual value, not hardcode it.
+  # WHY DYNAMIC: The 01-meta test modifies META.json, changing values (including
+  # version for testing regeneration). We must read the actual values, not hardcode them.
   #
   # This extraction must happen AFTER setup_sequential_test() ensures 01-meta
   # has completed, otherwise META.json may not exist or have wrong values.
-  export DISTRIBUTION_NAME=$(grep '"name"' "$TEST_REPO/META.json" | sed 's/.*"name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
-  export DIST_FILE="$TEST_DIR/${DISTRIBUTION_NAME}-0.1.0.zip"
+  export DISTRIBUTION_NAME=$(grep '"name"' "$TEST_REPO/META.json" | sed 's/.*"name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/' | head -1)
+  export VERSION=$(grep '"version"' "$TEST_REPO/META.json" | sed 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/' | head -1)
+  export DIST_FILE="$TEST_DIR/${DISTRIBUTION_NAME}-${VERSION}.zip"
   debug 1 "<<< EXIT setup_file: 02-dist (PID=$$)"
 }
 
@@ -81,7 +81,12 @@ teardown_file() {
   # Run make dist to create the distribution.
   # This happens AFTER make and make html have run, proving that prior
   # build operations don't break distribution creation.
-  make dist
+
+  # Clean up version branch if it exists (make dist creates this branch)
+  git branch -D "$VERSION" 2>/dev/null || true
+
+  run make dist
+  [ "$status" -eq 0 ]
   [ -f "$DIST_FILE" ]
 }
 

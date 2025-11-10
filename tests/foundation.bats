@@ -244,6 +244,18 @@ teardown_file() {
 # SETUP TESTS - Run setup.sh and configure repository
 # ============================================================================
 
+@test "META.json does not exist before setup" {
+  cd "$TEST_REPO"
+
+  # Skip if Makefile exists (setup already ran)
+  if [ -f "Makefile" ]; then
+    skip "setup.sh already completed"
+  fi
+
+  # META.json should NOT exist yet
+  [ ! -f "META.json" ]
+}
+
 @test "setup.sh fails on dirty repository" {
   cd "$TEST_REPO"
 
@@ -298,15 +310,18 @@ teardown_file() {
   [ -f ".gitignore" ] || [ -f "../.gitignore" ]
 }
 
-@test "setup.sh creates META.in.json" {
+@test "META.in.json still exists after setup" {
   cd "$TEST_REPO"
 
+  # setup.sh should not remove META.in.json
   assert_file_exists "META.in.json"
 }
 
-@test "setup.sh creates META.json" {
+@test "setup.sh generates META.json from META.in.json" {
   cd "$TEST_REPO"
 
+  # META.json should be created by setup.sh (even with placeholders)
+  # It will be regenerated with correct values after we fix META.in.json
   assert_file_exists "META.json"
 }
 
@@ -339,6 +354,87 @@ teardown_file() {
   # Verify no tracked changes remain (ignore untracked files)
   local remaining=$(git status --porcelain | grep -v '^??')
   [ -z "$remaining" ]
+}
+
+# ============================================================================
+# POST-SETUP CONFIGURATION - Fix META.in.json placeholders
+# ============================================================================
+#
+# setup.sh creates META.in.json with placeholder "DISTRIBUTION_NAME". We must
+# replace this placeholder with the actual extension name ("pgxntool-test")
+# and commit it. The next make run will automatically regenerate META.json
+# with correct values (META.json has META.in.json as a Makefile dependency).
+#
+# See pgxntool/build_meta.sh for details on the META.in.json → META.json pattern.
+
+@test "replace placeholders in META.in.json" {
+  cd "$TEST_REPO"
+
+  # Skip if already replaced
+  if ! grep -q "DISTRIBUTION_NAME\|EXTENSION_NAME" META.in.json; then
+    skip "Placeholders already replaced"
+  fi
+
+  # Replace both DISTRIBUTION_NAME and EXTENSION_NAME with pgxntool-test
+  # Note: sed -i.bak + rm is the simplest portable solution (works on macOS BSD sed and GNU sed)
+  # BSD sed requires an extension argument (can't do just -i), GNU sed allows it
+  sed -i.bak -e 's/DISTRIBUTION_NAME/pgxntool-test/g' -e 's/EXTENSION_NAME/pgxntool-test/g' META.in.json
+  rm -f META.in.json.bak
+
+  # Verify replacement
+  grep -q "pgxntool-test" META.in.json
+  ! grep -q "DISTRIBUTION_NAME" META.in.json
+  ! grep -q "EXTENSION_NAME" META.in.json
+}
+
+@test "commit META.in.json changes" {
+  cd "$TEST_REPO"
+
+  # Skip if no changes
+  if git diff --quiet META.in.json 2>/dev/null; then
+    skip "No META.in.json changes to commit"
+  fi
+
+  git add META.in.json
+  git commit -m "Configure extension name to pgxntool-test"
+}
+
+@test "make automatically regenerates META.json from META.in.json" {
+  cd "$TEST_REPO"
+
+  # Skip if META.json already has correct name
+  if grep -q "pgxntool-test" META.json && ! grep -q "DISTRIBUTION_NAME" META.json; then
+    skip "META.json already correct"
+  fi
+
+  # Run make - it will automatically regenerate META.json because META.in.json changed
+  # (META.json has META.in.json as a dependency in the Makefile)
+  run make
+  [ "$status" -eq 0 ]
+
+  # Verify META.json was automatically regenerated
+  assert_file_exists "META.json"
+}
+
+@test "META.json contains correct values" {
+  cd "$TEST_REPO"
+
+  # Verify META.json has the correct extension name, not placeholders
+  grep -q "pgxntool-test" META.json
+  ! grep -q "DISTRIBUTION_NAME" META.json
+  ! grep -q "EXTENSION_NAME" META.json
+}
+
+@test "commit auto-generated META.json" {
+  cd "$TEST_REPO"
+
+  # Skip if no changes
+  if git diff --quiet META.json 2>/dev/null; then
+    skip "No META.json changes to commit"
+  fi
+
+  git add META.json
+  git commit -m "Update META.json (auto-generated from META.in.json)"
 }
 
 @test "repository is in valid state after setup" {

@@ -25,7 +25,14 @@ sudo ./install.sh /usr/local
 
 ```bash
 # Run all tests
+# Note: If git repo is dirty (uncommitted changes), automatically runs test-recursion
+# instead to validate that test infrastructure changes don't break prerequisites/pollution detection
 make test
+
+# Test recursion and pollution detection with clean environment
+# Runs one independent test which auto-runs foundation as prerequisite
+# Useful for validating test infrastructure changes work correctly
+make test-recursion
 
 # Run individual test files (they auto-run prerequisites)
 test/bats/bin/bats tests/01-meta.bats
@@ -33,6 +40,21 @@ test/bats/bin/bats tests/02-dist.bats
 test/bats/bin/bats tests/test-doc.bats
 # etc...
 ```
+
+### Smart Test Execution
+
+`make test` automatically detects if test code has uncommitted changes:
+
+- **Clean repo**: Runs full test suite (all sequential and independent tests)
+- **Dirty repo**: Runs `make test-recursion` FIRST, then runs full test suite
+
+This is important because changes to test code (helpers.bash, test files, etc.) might break the prerequisite or pollution detection systems. Running test-recursion first exercises these systems by:
+1. Starting with completely clean environments
+2. Running an independent test that must auto-run foundation
+3. Validating that recursion and pollution detection work correctly
+4. If recursion is broken, we want to know immediately before running all tests
+
+This catches infrastructure bugs early - if test-recursion fails, you know the test system itself is broken before wasting time running the full suite.
 
 ## How Tests Work
 
