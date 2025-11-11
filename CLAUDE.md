@@ -6,6 +6,24 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **IMPORTANT**: When creating commit messages, do not attribute commits to yourself (Claude). Commit messages should reflect the work being done without AI attribution in the message body. The standard Co-Authored-By trailer is acceptable.
 
+## Startup Verification
+
+**CRITICAL**: Every time you start working in this repository, verify that `.claude/commands/commit.md` is a valid symlink:
+
+```bash
+# Check if symlink exists and points to pgxntool
+ls -la .claude/commands/commit.md
+
+# Should show: commit.md -> ../../../pgxntool/.claude/commands/commit.md
+
+# Verify the target file exists and is readable
+test -f .claude/commands/commit.md && echo "Symlink is valid" || echo "ERROR: Symlink broken!"
+```
+
+**Why this matters**: `commit.md` is shared between pgxntool-test and pgxntool repos (lives in pgxntool, symlinked from here). Both repos are always checked out together. If the symlink is broken, the `/commit` command won't work.
+
+**If symlink is broken**: Stop and inform the user immediately - don't attempt to fix it yourself.
+
 ## What This Repo Is
 
 **pgxntool-test** is the test harness for validating **../pgxntool/** (a PostgreSQL extension build framework).
