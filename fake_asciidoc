@@ -1,0 +1,6 @@
+#!/bin/bash
+
+[ $# -eq 1 ] || (echo Wrong # of arguments >&2; exit 1)
+
+out=${$1%.*}.html # Trim .*; append .html
+cp $1 $out || exit $?
