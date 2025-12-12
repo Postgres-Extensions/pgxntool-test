@@ -242,6 +242,39 @@ debug() {
 
 **Reference**: https://bats-core.readthedocs.io/en/stable/writing-tests.html#printing-to-the-terminal
 
+### Status Assertion Functions
+
+We provide status assertion functions for checking command exit codes. **Prefer these over raw `[ "$status" -eq 0 ]` checks:**
+
+#### `assert_success`
+**Purpose**: Assert that a command succeeded (exit status 0)
+
+**Usage**:
+```bash
+run make test
+assert_success
+```
+
+#### `assert_failure`
+**Purpose**: Assert that a command failed (non-zero exit status)
+
+**Usage**:
+```bash
+run make dist  # Expected to fail
+assert_failure
+```
+
+#### `assert_failure_with_status EXPECTED_STATUS`
+**Purpose**: Assert that a command failed with a specific exit status
+
+**Usage**:
+```bash
+run invalid_command
+assert_failure_with_status 127
+```
+
+**Note**: The raw syntax `[ "$status" -eq 0 ]` is also acceptable and commonly used in BATS tests, but the assertion functions provide clearer error messages.
+
 ### Output Helper Functions
 
 We provide three helper functions for all output in BATS tests. **Always use these instead of raw echo commands:**
@@ -317,6 +350,116 @@ cd "$TEST_REPO" || error "Failed to cd to TEST_REPO"  # Error visible immediatel
 
 ## Shell Error Handling Rules
 
+### Never Use BATS `skip` Unless Explicitly Told
+
+**CRITICAL RULE:** You should never use BATS `skip` unless explicitly told to do so by the user.
+
+**Why This Matters:**
+- `skip` hides test failures and makes it unclear if tests are actually passing
+- If PostgreSQL isn't running, that's a real problem that should be fixed, not skipped
+- Skipping tests reduces test coverage and can hide real issues
+- Tests should either pass or fail - skipping is a last resort
+
+**Bad Examples:**
+```bash
+# WRONG - skipping because PG might not be running
+[ -f "test/results/test.out" ] || skip "Test didn't produce results (PostgreSQL may not be running)"
+
+# WRONG - skipping because a command might fail
+run make test
+[ "$status" -eq 0 ] || skip "make test failed (PostgreSQL may not be running)"
+```
+
+**Good Examples:**
+```bash
+# CORRECT - check that the file exists, fail if it doesn't
+assert_file_exists "test/results/test.out"
+
+# CORRECT - check that make test succeeds
+run make test
+assert_success
+```
+
+**When `skip` might be acceptable (only if explicitly requested):**
+- User explicitly asks to skip tests in certain conditions
+- Testing optional features that may not be available
+- Conditional tests that are explicitly documented as optional
+
+**If a test requires PostgreSQL to be running:**
+- The test should fail if PostgreSQL isn't running
+- This makes it clear that the test environment needs to be set up correctly
+- Don't hide the problem with `skip`
+
+### Never Ignore Result Codes in BATS Tests
+
+**CRITICAL RULE:** BATS tests must never ignore result codes (i.e., by doing `command || true`) unless there's a very explicit reason to do so (which must then be documented).
+
+This rule applies to all commands in BATS test files, including:
+- Test commands that are expected to fail (use `run` and check `$status` instead)
+- Setup/teardown commands
+- Helper function calls
+- Any command where failure would indicate a real problem
+
+**Why this matters:**
+- Ignoring errors hides real bugs and makes debugging nearly impossible
+- BATS provides proper mechanisms (`run`, `$status`, assertions) for handling expected failures
+- Silent failures can cause cascading test failures that are hard to trace
+- Future maintainers won't know if the suppression is intentional or a bug
+
+**Bad Examples:**
+```bash
+# WRONG - silently ignores failure
+make test || true
+
+# WRONG - hides real problems
+cd "$TEST_REPO" || true
+
+# WRONG - no way to know if this actually worked
+git add file || true
+```
+
+**Good Examples:**
+```bash
+# CORRECT - use run with assert_success (preferred)
+run make test
+assert_success
+
+# CORRECT - use run with assert_failure for expected failures
+run make dist
+assert_failure
+
+# CORRECT - use run with assert_failure_with_status for specific exit codes
+run invalid_command
+assert_failure_with_status 127
+
+# CORRECT - alternative: use run and check status directly (also acceptable)
+run make test
+[ "$status" -eq 0 ]
+
+# CORRECT - let it fail if it should fail
+cd "$TEST_REPO"  # Should exist at this point
+
+# CORRECT - if truly optional, be explicit and document why
+# OK to fail: This operation is optional and failure is acceptable
+# because we're checking if a feature is available
+if [ ! -d "$TEST_REPO" ]; then
+  error "TEST_REPO not created yet"
+fi
+cd "$TEST_REPO"
+```
+
+**When suppression might be acceptable (with documentation):**
+- Operations that are truly optional and failure is expected/acceptable
+- Cleanup operations where failure doesn't affect test validity
+- Operations where the test explicitly checks for failure conditions
+
+**Example of acceptable suppression (with documentation):**
+```bash
+# OK to fail: Cleanup operation - if file doesn't exist, that's fine
+# This is cleanup, not part of the actual test logic
+rm -f temporary_test_file || true
+```
+
 ### Never Use `|| true` Without Clear Documentation
 
 **CRITICAL RULE:** Never use `|| true` to suppress errors without a clear, documented reason in a comment.
@@ -348,12 +491,6 @@ run some_command_that_should_fail || true
 ```bash
 # Instead of suppressing, let it fail if it should fail:
 cd "$TEST_REPO"  # Should exist at this point; fail if it doesn't
-
-# Use BATS skip if operation is conditional:
-if [ ! -d "$TEST_REPO" ]; then
-  skip "TEST_REPO not created yet"
-fi
-cd "$TEST_REPO"
 
 # For truly optional operations, be explicit:
 if [ -f "optional_file" ]; then

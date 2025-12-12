@@ -54,13 +54,14 @@ setup() {
 @test "repository is in clean state before make dist" {
   # Verify repo is clean (no uncommitted changes, no untracked files except ignored)
   run git status --porcelain
-  [ "$status" -eq 0 ]
+  assert_success
 
   # Should have no output (repo is clean)
   [ -z "$output" ]
 
   # Clean up any existing version branch (from previous runs)
   # make dist creates a branch with the version number, and will fail if it exists
+  # OK to fail: Branch may not exist, which is fine for cleanup
   git branch -D "$VERSION" 2>/dev/null || true
 
   # Also clean up any previous distribution file
@@ -71,8 +72,7 @@ setup() {
   # This is the key test: make dist must work from a completely clean checkout.
   # It should build documentation, create versioned SQL files, and package everything.
   run make dist
-  echo "$output"  # Show output for debugging
-  [ "$status" -eq 0 ]
+  assert_success_with_output
 }
 
 @test "make dist creates distribution archive" {
@@ -87,7 +87,7 @@ setup() {
 @test "generated HTML files are ignored by git" {
   # HTML files should be in .gitignore, so they don't make repo dirty
   run git status --porcelain
-  [ "$status" -eq 0 ]
+  assert_success
 
   # Should have no untracked .html files
   ! echo "$output" | grep -q "\.html$"
@@ -96,7 +96,7 @@ setup() {
 @test "repository remains clean after make dist" {
   # After make dist, repo should still be clean (all generated files ignored)
   run git status --porcelain
-  [ "$status" -eq 0 ]
+  assert_success
   [ -z "$output" ]
 }
 
@@ -107,7 +107,7 @@ setup() {
   # 1. Distribution behavior has changed (investigate why)
   # 2. Manifest needs updating (if change is intentional)
   run validate_exact_distribution_contents "$DIST_FILE"
-  [ "$status" -eq 0 ]
+  assert_success_with_output
 }
 
 @test "distribution contents pass pattern validation" {
@@ -118,7 +118,7 @@ setup() {
   # - Excluded files (git metadata, pgxntool docs, build artifacts)
   # - Proper structure (single top-level directory)
   run validate_distribution_contents "$DIST_FILE"
-  [ "$status" -eq 0 ]
+  assert_success
 }
 
 @test "distribution contains test documentation files" {

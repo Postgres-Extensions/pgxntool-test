@@ -39,10 +39,11 @@ setup() {
     skip "test/output already exists"
   fi
 
-  # Run make test (will fail but that's expected for test setup)
-  make test || true
+  # pg_regress does NOT create input/ or output/ directories - they are optional
+  # INPUT directories. We need to create it ourselves for this test.
+  mkdir -p test/output
 
-  # Directory should now exist
+  # Verify directory was created
   assert_dir_exists "test/output"
 }
 
@@ -51,6 +52,9 @@ setup() {
 }
 
 @test "can copy expected output file to test/output" {
+  # Ensure test/output directory exists (pg_regress doesn't create it)
+  mkdir -p test/output
+
   local source_file="$TOPDIR/pgxntool-test.source"
 
   # Skip if already copied
@@ -72,7 +76,7 @@ setup() {
 @test "make test succeeds when output matches" {
   # This should now pass since we copied the expected output
   run make test
-  [ "$status" -eq 0 ]
+  assert_success
 }
 
 @test "expected output can be committed" {
@@ -86,7 +90,7 @@ setup() {
   # Add and commit
   git add test/expected/
   run git commit -m "Add test expected output"
-  [ "$status" -eq 0 ]
+  assert_success
 }
 
 @test "can remove test directories" {
@@ -98,7 +102,8 @@ setup() {
 
 @test "make test doesn't recreate output when directories removed" {
   # After removing directories, output should not be recreated
-  make test || true
+  # We only care that the directory doesn't get recreated, not that tests pass
+  run make test
 
   # test/output should NOT exist (correct behavior)
   assert_dir_not_exists "test/output"
@@ -109,7 +114,7 @@ setup() {
   assert_file_exists "Makefile"
 
   run make --version
-  [ "$status" -eq 0 ]
+  assert_success
 }
 
 # vi: expandtab sw=2 ts=2

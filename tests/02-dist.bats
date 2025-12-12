@@ -29,7 +29,7 @@ setup_file() {
   debug 1 ">>> ENTER setup_file: 02-dist (PID=$$)"
   setup_sequential_test "02-dist" "01-meta"
 
-  # CRITICAL: Extract distribution name and version dynamically from META.json
+  # Extract distribution name and version dynamically from META.json
   #
   # WHY DYNAMIC: The 01-meta test modifies META.json, changing values (including
   # version for testing regeneration). We must read the actual values, not hardcode them.
@@ -83,6 +83,7 @@ teardown_file() {
   # build operations don't break distribution creation.
 
   # Clean up version branch if it exists (make dist creates this branch)
+  # OK to fail: Branch may not exist from previous runs, which is fine
   git branch -D "$VERSION" 2>/dev/null || true
 
   run make dist
@@ -96,7 +97,12 @@ teardown_file() {
   # If this test fails, either:
   # 1. Distribution behavior has changed (investigate why)
   # 2. Manifest needs updating (if change is intentional)
+  # DIST_FILE is set in setup_file() to the absolute path where make dist creates it
   run validate_exact_distribution_contents "$DIST_FILE"
+  if [ "$status" -ne 0 ]; then
+    out "Validation failed. Output:"
+    out "$output"
+  fi
   [ "$status" -eq 0 ]
 }
 
@@ -147,5 +153,6 @@ teardown_file() {
   # Clean up
   git checkout Makefile
 }
+
 
 # vi: expandtab sw=2 ts=2

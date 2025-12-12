@@ -15,7 +15,8 @@ load helpers
 # Helper function to get HTML files (excluding other.html)
 get_html() {
   local other_html="$1"
-  local html_files=$(cd "$TEST_DIR/doc_repo" && ls doc/*.html 2>/dev/null || true)
+  # OK to fail: ls returns non-zero if no files match, which is a valid state
+  local html_files=$(cd "$TEST_DIR/doc_repo" && ls doc/*.html 2>/dev/null || echo "")
 
   if [ -z "$html_files" ]; then
     echo ""
@@ -76,7 +77,8 @@ setup() {
 }
 
 @test "documentation source files exist" {
-  local doc_files=$(ls "$TEST_DIR/doc_repo/doc"/*.adoc "$TEST_DIR/doc_repo/doc"/*.asciidoc 2>/dev/null || true)
+  # OK to fail: ls returns non-zero if no files match, which would mean test should fail
+  local doc_files=$(ls "$TEST_DIR/doc_repo/doc"/*.adoc "$TEST_DIR/doc_repo/doc"/*.asciidoc 2>/dev/null || echo "")
   [ -n "$doc_files" ]
 }
 
@@ -88,8 +90,9 @@ setup() {
   local expected=$(echo "$input" | sed -Ee 's/(adoc|asciidoc)$/html/')
   rm -f $expected
 
-  # Install without ASCIIDOC
-  ASCIIDOC='' make install >/dev/null 2>&1 || true
+  # Install without ASCIIDOC (should fail, but we only care about HTML files not being created)
+  run env ASCIIDOC='' make install
+  # Don't check status - we're testing that HTML files aren't created, not that install succeeds
 
   # Check no HTML files were created (except other.html which is pre-existing)
   local html=$(get_html "other.html")
@@ -110,8 +113,9 @@ setup() {
   local input=$(ls doc/*.adoc doc/*.asciidoc 2>/dev/null)
   local expected=$(echo "$input" | sed -Ee 's/(adoc|asciidoc)$/html/')
 
-  # Run make test
-  make test >/dev/null 2>&1 || true
+  # Run make test (may fail if PostgreSQL not running, but we only care about HTML generation)
+  run make test
+  # Don't check status - we're testing that HTML files are created, not that tests pass
 
   # Check HTML files were created
   local html=$(get_html "other.html")
@@ -136,7 +140,8 @@ setup() {
   cd "$TEST_DIR/doc_repo"
 
   # Ensure docs exist
-  make html >/dev/null 2>&1 || true
+  run make html
+  assert_success
   local html_before=$(get_html "other.html")
   [ -n "$html_before" ]
 
@@ -152,10 +157,12 @@ setup() {
   cd "$TEST_DIR/doc_repo"
 
   # Clean first
-  make docclean >/dev/null 2>&1 || true
+  run make docclean
+  assert_success
 
   # Generate with asc extension only
-  ASCIIDOC_EXTS='asc' make html >/dev/null 2>&1 || true
+  run env ASCIIDOC_EXTS='asc' make html
+  assert_success
 
   # Should have adoc_doc.html, asc_doc.html, asciidoc_doc.html
   local html=$(get_html "other.html")
@@ -166,7 +173,8 @@ doc/asciidoc_doc.html'
   check_html "$html" "$expected"
 
   # Clean again
-  ASCIIDOC_EXTS='asc' make docclean >/dev/null 2>&1 || true
+  run env ASCIIDOC_EXTS='asc' make docclean
+  assert_success
   local html_after=$(get_html "other.html")
   [ -z "$html_after" ]
 }
@@ -175,20 +183,21 @@ doc/asciidoc_doc.html'
   cd "$TEST_DIR/doc_repo"
 
   # Generate docs first
-  make html >/dev/null 2>&1 || true
+  run make html
+  assert_success
 
   # Remove doc directory
   rm -rf doc
 
   # These should all work without error
   run make clean
-  [ "$status" -eq 0 ]
+  assert_success
 
   run make docclean
-  [ "$status" -eq 0 ]
+  assert_success
 
   run make install
-  [ "$status" -eq 0 ]
+  assert_success
 }
 
 @test "doc_repo is still functional" {
@@ -198,7 +207,7 @@ doc/asciidoc_doc.html'
   assert_file_exists "Makefile"
 
   run make --version
-  [ "$status" -eq 0 ]
+  assert_success
 }
 
 # vi: expandtab sw=2 ts=2

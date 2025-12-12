@@ -42,6 +42,20 @@ This repo tests pgxntool by:
 
 **Key insight**: pgxntool cannot be tested in isolation because it's designed to be embedded in other projects. So we clone a template project, inject pgxntool, and test the combination.
 
+### Important: pgxntool Directory Purity
+
+**CRITICAL**: The `../pgxntool/` directory contains ONLY the tool itself - the files that get embedded into extension projects via `git subtree`. Be extremely careful about what files you add to pgxntool:
+
+- ✅ **DO add**: Files that are part of the framework (Makefiles, scripts, templates, documentation for end users)
+- ❌ **DO NOT add**: Development tools, test infrastructure, convenience scripts for pgxntool developers
+
+**Why this matters**: When extension developers run `git subtree add`, they pull the entire pgxntool directory into their project. Any extraneous files (development scripts, testing tools, etc.) will pollute their repositories.
+
+**Where to put development tools**:
+- **pgxntool-test/** - Test infrastructure, BATS tests, test helpers
+- **pgxntool-test-template/** - Example extension files for testing
+- Your local environment - Convenience scripts that don't need to be in version control
+
 ## How Tests Work
 
 ### Test System Architecture

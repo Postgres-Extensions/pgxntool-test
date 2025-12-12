@@ -26,6 +26,11 @@ setup() {
 }
 
 @test "make results establishes baseline expected output" {
+  # Clean up any leftover files in test/output/ from previous test runs
+  # (pg_regress uses test/output/ for diffs, but empty .source files might be left behind)
+  # These can interfere with make_results.sh which checks for output/*.source files
+  rm -f test/output/*.source
+
   # Skip if expected output already exists and has content
   if [ -f "test/expected/pgxntool-test.out" ] && [ -s "test/expected/pgxntool-test.out" ]; then
     skip "Expected output already established"
@@ -34,7 +39,7 @@ setup() {
   # Run make results (which depends on make test, so both will run)
   # This establishes the baseline expected output
   run make results
-  [ "$status" -eq 0 ]
+  assert_success
 
   # Verify expected output now exists with content
   assert_file_exists "test/expected/pgxntool-test.out"
@@ -57,7 +62,7 @@ setup() {
   # Add and commit the expected output
   git add test/expected/pgxntool-test.out
   run git commit -m "Add baseline expected output"
-  [ "$status" -eq 0 ]
+  assert_success
 }
 
 @test "can modify expected output to create mismatch" {
@@ -83,13 +88,13 @@ setup() {
 @test "make results updates expected output" {
   # Run make results to fix the expected output
   run make results
-  [ "$status" -eq 0 ]
+  assert_success
 }
 
 @test "make test succeeds after make results" {
   # Now make test should pass
   run make test
-  [ "$status" -eq 0 ]
+  assert_success
 }
 
 @test "repository is still functional after make results" {

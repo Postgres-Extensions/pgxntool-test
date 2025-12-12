@@ -88,7 +88,7 @@ teardown_file() {
 @test "make regenerates META.json from META.in.json" {
   # Run make (should regenerate META.json because META.in.json changed)
   run make
-  [ "$status" -eq 0 ]
+  assert_success
 
   # META.json should exist
   assert_file_exists "META.json"
@@ -102,7 +102,7 @@ teardown_file() {
 @test "META.json is valid JSON" {
   # Try to parse it with a simple check
   run python3 -m json.tool META.json
-  [ "$status" -eq 0 ]
+  assert_success
 }
 
 @test "changes can be committed" {
@@ -114,7 +114,7 @@ teardown_file() {
 
   # Commit
   run git commit -am "Change META"
-  [ "$status" -eq 0 ]
+  assert_success
 
   # Verify no tracked changes remain (ignore untracked files)
   local remaining=$(git status --porcelain | grep -v '^??')

@@ -3,6 +3,50 @@
 # This file contains all assertion and validation functions used by the test suite.
 # It should be loaded by helpers.bash.
 
+# Status Assertions
+# These should be used after `run command` to check exit status
+
+# Assert that a command succeeded (exit status 0)
+# Usage: run some_command
+#        assert_success
+#        assert_success_with_output  # Includes output on failure
+assert_success() {
+  if [ "$status" -ne 0 ]; then
+    error "Command failed with exit status $status"
+  fi
+}
+
+# Assert that a command succeeded, showing output on failure
+# Usage: run some_command
+#        assert_success_with_output
+assert_success_with_output() {
+  if [ "$status" -ne 0 ]; then
+    out "Command failed with exit status $status"
+    out "Output:"
+    out "$output"
+    error "Command failed (see output above)"
+  fi
+}
+
+# Assert that a command failed (non-zero exit status)
+# Usage: run some_command_that_should_fail
+#        assert_failure
+assert_failure() {
+  if [ "$status" -eq 0 ]; then
+    error "Command succeeded but was expected to fail"
+  fi
+}
+
+# Assert that a command failed with a specific exit status
+# Usage: run some_command_that_should_fail
+#        assert_failure_with_status 1
+assert_failure_with_status() {
+  local expected_status=$1
+  if [ "$status" -ne "$expected_status" ]; then
+    error "Command failed with exit status $status, expected $expected_status"
+  fi
+}
+
 # Basic File/Directory Assertions
 
 # Assertions for common checks
@@ -14,6 +58,46 @@ assert_file_exists() {
 assert_file_not_exists() {
   local file=$1
   [ ! -f "$file" ]
+}
+
+# Assert that all files in an array exist
+# Usage: assert_files_exist files_array
+#   where files_array is a bash array variable name (not the array itself)
+assert_files_exist() {
+  local array_name=$1
+  local missing_files=()
+  local file
+  
+  # Use eval to access the array by name (works in older bash versions)
+  eval "for file in \"\${${array_name}[@]}\"; do
+    if [ ! -f \"\$file\" ]; then
+      missing_files+=(\"\$file\")
+    fi
+  done"
+  
+  if [ ${#missing_files[@]} -gt 0 ]; then
+    error "The following files do not exist: ${missing_files[*]}"
+  fi
+}
+
+# Assert that all files in an array do not exist
+# Usage: assert_files_not_exist files_array
+#   where files_array is a bash array variable name (not the array itself)
+assert_files_not_exist() {
+  local array_name=$1
+  local existing_files=()
+  local file
+  
+  # Use eval to access the array by name (works in older bash versions)
+  eval "for file in \"\${${array_name}[@]}\"; do
+    if [ -f \"\$file\" ]; then
+      existing_files+=(\"\$file\")
+    fi
+  done"
+  
+  if [ ${#existing_files[@]} -gt 0 ]; then
+    error "The following files should not exist but do: ${existing_files[*]}"
+  fi
 }
 
 assert_dir_exists() {

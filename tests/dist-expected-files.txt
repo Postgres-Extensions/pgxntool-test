@@ -12,7 +12,6 @@
 # Blank lines are ignored
 #
 # KNOWN ISSUES (TODO):
-# - .claude/ directories should be excluded (via .gitattributes export-ignore)
 # - t/ directory duplication should be resolved (files are at root AND in t/)
 #
 # Last updated: During foundation + template file setup
@@ -25,10 +24,6 @@ META.in.json
 META.json
 pgxntool-test.control
 TEST_DOC.asc
-
-# TODO: Should be excluded from distributions
-.claude/
-.claude/settings.json
 
 # Documentation (root level, copied from t/)
 doc/
@@ -76,6 +71,7 @@ pgxntool/JSON.sh
 pgxntool/JSON.sh.LICENSE
 pgxntool/LICENSE
 pgxntool/META.in.json
+pgxntool/make_results.sh
 pgxntool/meta.mk.sh
 pgxntool/safesed
 pgxntool/setup.sh
@@ -89,7 +85,3 @@ pgxntool/test/pgxntool/finish.sql
 pgxntool/test/pgxntool/psql.sql
 pgxntool/test/pgxntool/setup.sql
 pgxntool/test/pgxntool/tap_setup.sql
-
-# TODO: Should be excluded from distributions
-pgxntool/.claude/
-pgxntool/.claude/settings.json

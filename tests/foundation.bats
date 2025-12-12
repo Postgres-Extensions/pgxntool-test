@@ -76,7 +76,7 @@ teardown_file() {
 
   # Clone the template
   run git clone "$TEST_TEMPLATE" "$TEST_REPO"
-  [ "$status" -eq 0 ]
+  assert_success
   [ -d "$TEST_REPO/.git" ]
 }
 
@@ -110,14 +110,14 @@ teardown_file() {
 
   local current_branch=$(git symbolic-ref --short HEAD)
   run git push --set-upstream origin "$current_branch"
-  [ "$status" -eq 0 ]
+  assert_success
 
   # Verify branch exists on remote
   git branch -r | grep -q "origin/$current_branch"
 
   # Verify repository is in consistent state after push
   run git status
-  [ "$status" -eq 0 ]
+  assert_success
 }
 
 @test "pgxntool is added to repository" {
@@ -190,7 +190,7 @@ teardown_file() {
       out "Output: $output"
     fi
 
-    [ "$status" -eq 0 ]
+    assert_success
   fi
 
   # Verify pgxntool was added either way
@@ -228,7 +228,7 @@ teardown_file() {
   # If we got here, rsync should have been used
   # Look for the commit message about uncommitted changes
   run git log --oneline -1 --grep="Committing unsaved pgxntool changes"
-  [ "$status" -eq 0 ]
+  assert_success
 }
 
 @test "TEST_REPO is a valid git repository after clone" {
@@ -237,7 +237,7 @@ teardown_file() {
   # Final validation of clone phase
   [ -d ".git" ]
   run git status
-  [ "$status" -eq 0 ]
+  assert_success
 }
 
 # ============================================================================
@@ -291,7 +291,7 @@ teardown_file() {
 
   # Run setup.sh
   run pgxntool/setup.sh
-  [ "$status" -eq 0 ]
+  assert_success
 }
 
 @test "setup.sh creates Makefile" {
@@ -349,7 +349,7 @@ teardown_file() {
 
   # Commit the changes
   run git commit -am "Test setup"
-  [ "$status" -eq 0 ]
+  assert_success
 
   # Verify no tracked changes remain (ignore untracked files)
   local remaining=$(git status --porcelain | grep -v '^??')
@@ -410,7 +410,7 @@ teardown_file() {
   # Run make - it will automatically regenerate META.json because META.in.json changed
   # (META.json has META.in.json as a dependency in the Makefile)
   run make
-  [ "$status" -eq 0 ]
+  assert_success
 
   # Verify META.json was automatically regenerated
   assert_file_exists "META.json"
@@ -447,7 +447,7 @@ teardown_file() {
 
   # Should be able to run make
   run make --version
-  [ "$status" -eq 0 ]
+  assert_success
 }
 
 @test "template files are copied to root" {
@@ -478,19 +478,35 @@ teardown_file() {
 @test "template files are committed" {
   cd "$TEST_REPO"
 
-  # Check if already committed (no untracked template files)
-  if ! git status --porcelain | grep -q "^?? "; then
-    skip "No untracked files to commit"
+  # Check if template files need to be committed
+  local files_to_add=""
+  if [ -f "TEST_DOC.asc" ] && git status --porcelain TEST_DOC.asc | grep -q "^??"; then
+    files_to_add="$files_to_add TEST_DOC.asc"
+  fi
+  if [ -d "doc" ] && git status --porcelain doc/ | grep -q "^??"; then
+    files_to_add="$files_to_add doc/"
+  fi
+  if [ -d "sql" ] && git status --porcelain sql/ | grep -q "^??"; then
+    files_to_add="$files_to_add sql/"
+  fi
+  if [ -d "test/input" ] && git status --porcelain test/input/ | grep -q "^??"; then
+    files_to_add="$files_to_add test/input/"
   fi
 
-  git add TEST_DOC.asc doc/ sql/ test/input/
-  git commit -m "Add extension template files
+  if [ -z "$files_to_add" ]; then
+    skip "No untracked template files to commit"
+  fi
+
+  # Add template files
+  git add $files_to_add
+  run git commit -m "Add extension template files
 
 These files would normally be part of the extension repository.
 They're copied from t/ to root as part of extension setup."
+  assert_success
 
   # Verify commit succeeded (no untracked template files remain)
-  local untracked=$(git status --porcelain | grep "^?? " | grep -E "(TEST_DOC|doc/|sql/|test/input/)" || true)
+  local untracked=$(git status --porcelain | grep "^?? " | grep -E "(TEST_DOC|doc/|sql/|test/input/)" || echo "")
   [ -z "$untracked" ]
 }
 
@@ -518,5 +534,27 @@ They're copied from t/ to root as part of extension setup."
   git add .gitignore
   git commit -m "Ignore generated HTML documentation"
 }
+
+@test ".gitattributes is committed for export-ignore support" {
+  cd "$TEST_REPO"
+
+  # Skip if already committed
+  if git ls-files --error-unmatch .gitattributes >/dev/null 2>&1; then
+    skip ".gitattributes already committed"
+  fi
+
+  # Create .gitattributes if it doesn't exist (template has it but it's not tracked)
+  if [ ! -f ".gitattributes" ]; then
+    cat > .gitattributes <<EOF
+.gitattributes export-ignore
+.claude/ export-ignore
+EOF
+  fi
+
+  # Commit .gitattributes so export-ignore works in make dist
+  git add .gitattributes
+  git commit -m "Add .gitattributes for export-ignore support"
+}
+
 
 # vi: expandtab sw=2 ts=2

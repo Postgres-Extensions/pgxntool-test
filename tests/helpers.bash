@@ -489,6 +489,7 @@ setup_sequential_test() {
       debug 2 "setup_sequential_test: Running prereq: bats $immediate_prereq.bats"
       # Run prereq (it handles its own deps recursively)
       # Filter stdout for TAP comments to FD3, leave stderr alone
+      # OK to fail: grep returns non-zero if no matches, but we want empty output in that case
       "$BATS_TEST_DIRNAME/../test/bats/bin/bats" "$BATS_TEST_DIRNAME/$immediate_prereq.bats" | { grep '^#' || true; } >&3
       local prereq_status=${PIPESTATUS[0]}
       if [ $prereq_status -ne 0 ]; then
@@ -568,6 +569,7 @@ setup_nonsequential_test() {
       local sequential_state_dir="$TOPDIR/.envs/sequential/.bats-state"
       if [ -d "$sequential_state_dir" ] && ls "$sequential_state_dir"/.complete-* >/dev/null 2>&1; then
         out "Cleaning sequential environment to avoid pollution from previous test run..."
+        # OK to fail: clean_env may fail if environment is locked, but we continue anyway
         clean_env "sequential" || true
       fi
     fi
@@ -583,6 +585,7 @@ setup_nonsequential_test() {
       # State marker doesn't exist - must run prerequisite
       # Individual @test blocks will skip if work is already done
       out "Running prerequisite: $prereq.bats"
+      # OK to fail: grep returns non-zero if no matches, but we want empty output in that case
       "$BATS_TEST_DIRNAME/../test/bats/bin/bats" "$BATS_TEST_DIRNAME/$prereq.bats" | { grep '^#' || true; } >&3
       [ ${PIPESTATUS[0]} -eq 0 ] || return 1
       out "Prerequisite $prereq.bats completed"
@@ -671,6 +674,7 @@ ensure_foundation() {
     out "Creating foundation environment..."
 
     # Run foundation.bats to create it
+    # OK to fail: grep returns non-zero if no matches, but we want empty output in that case
     "$BATS_TEST_DIRNAME/../test/bats/bin/bats" "$BATS_TEST_DIRNAME/foundation.bats" | { grep '^#' || true; } >&3
     local status=${PIPESTATUS[0]}
 

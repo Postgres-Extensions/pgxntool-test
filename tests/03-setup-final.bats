@@ -29,7 +29,7 @@ teardown_file() {
 @test "setup.sh can be run again" {
   # This should not error
   run pgxntool/setup.sh
-  [ "$status" -eq 0 ]
+  assert_success
 }
 
 @test "setup.sh doesn't overwrite Makefile" {
@@ -54,7 +54,7 @@ teardown_file() {
 
   # Should be no changes
   run git diff --exit-code
-  [ "$status" -eq 0 ]
+  assert_success
 }
 
 @test "deps.sql can be updated with extension name" {
