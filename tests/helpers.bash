@@ -712,4 +712,114 @@ ensure_foundation() {
   debug 3 "ensure_foundation: Foundation copied successfully"
 }
 
+# ============================================================================
+# PostgreSQL Availability Detection
+# ============================================================================
+
+# Global variable to cache PostgreSQL availability check result
+# Values: "available", "unavailable", or "" (not checked yet)
+_POSTGRES_AVAILABLE=""
+
+# Check if PostgreSQL is available and running
+#
+# This function performs a comprehensive check:
+# 1. Checks if pg_config is available (PostgreSQL development tools installed)
+# 2. Checks if psql is available (PostgreSQL client installed)
+# 3. Checks if PostgreSQL server is running (attempts connection using plain `psql`)
+#
+# IMPORTANT: This function assumes the user has configured PostgreSQL environment
+# variables (PGHOST, PGPORT, PGUSER, PGDATABASE, PGPASSWORD, etc.) so that a plain
+# `psql` command works without additional flags. This keeps the test framework simple.
+#
+# The result is cached in _POSTGRES_AVAILABLE to avoid repeated expensive checks.
+#
+# Usage:
+#   if ! check_postgres_available; then
+#     skip "PostgreSQL not available: $POSTGRES_UNAVAILABLE_REASON"
+#   fi
+#
+# Or use the convenience function:
+#   skip_if_no_postgres
+#
+# Returns:
+#   0 if PostgreSQL is available and running
+#   1 if PostgreSQL is not available (with reason in POSTGRES_UNAVAILABLE_REASON)
+check_postgres_available() {
+  # Return cached result if available
+  if [ -n "$_POSTGRES_AVAILABLE" ]; then
+    if [ "$_POSTGRES_AVAILABLE" = "available" ]; then
+      return 0
+    else
+      return 1
+    fi
+  fi
+
+  # Reset reason variable
+  POSTGRES_UNAVAILABLE_REASON=""
+
+  # Check 1: pg_config available
+  if ! command -v pg_config >/dev/null 2>&1; then
+    POSTGRES_UNAVAILABLE_REASON="pg_config not found (PostgreSQL development tools not installed)"
+    _POSTGRES_AVAILABLE="unavailable"
+    return 1
+  fi
+
+  # Check 2: psql available
+  local psql_path
+  if ! psql_path=$(command -v psql 2>/dev/null); then
+    # Try to find psql via pg_config
+    local pg_bindir
+    pg_bindir=$(pg_config --bindir 2>/dev/null || echo "")
+    if [ -n "$pg_bindir" ] && [ -x "$pg_bindir/psql" ]; then
+      psql_path="$pg_bindir/psql"
+    else
+      POSTGRES_UNAVAILABLE_REASON="psql not found (PostgreSQL client not installed)"
+      _POSTGRES_AVAILABLE="unavailable"
+      return 1
+    fi
+  fi
+
+  # Check 3: PostgreSQL server running
+  # Assume user has configured environment variables (PGHOST, PGPORT, PGUSER, PGDATABASE, etc.)
+  # so that a plain `psql` command works. This keeps the test framework simple.
+  local connect_error
+  if ! connect_error=$("$psql_path" -c "SELECT 1;" 2>&1); then
+    # Determine the specific reason
+    if echo "$connect_error" | grep -qi "could not connect\|connection refused\|connection timed out\|no such file or directory"; then
+      POSTGRES_UNAVAILABLE_REASON="PostgreSQL server not running or not accessible (check PGHOST, PGPORT, etc.)"
+    elif echo "$connect_error" | grep -qi "password authentication failed"; then
+      POSTGRES_UNAVAILABLE_REASON="PostgreSQL authentication failed (check PGPASSWORD, .pgpass, or pg_hba.conf)"
+    elif echo "$connect_error" | grep -qi "role.*does not exist\|database.*does not exist"; then
+      POSTGRES_UNAVAILABLE_REASON="PostgreSQL user/database not found (check PGUSER, PGDATABASE, etc.)"
+    else
+      # Use first 5 lines of error for context
+      POSTGRES_UNAVAILABLE_REASON="PostgreSQL not accessible: $(echo "$connect_error" | head -5 | tr '\n' '; ' | sed 's/; $//')"
+    fi
+    _POSTGRES_AVAILABLE="unavailable"
+    return 1
+  fi
+
+  # All checks passed
+  _POSTGRES_AVAILABLE="available"
+  return 0
+}
+
+# Convenience function to skip test if PostgreSQL is not available
+#
+# Usage:
+#   @test "my test that needs PostgreSQL" {
+#     skip_if_no_postgres
+#     # ... rest of test ...
+#   }
+#
+# This function:
+# - Checks PostgreSQL availability (cached after first check)
+# - Skips the test with a helpful message if unavailable
+# - Does nothing if PostgreSQL is available
+skip_if_no_postgres() {
+  if ! check_postgres_available; then
+    skip "PostgreSQL not available: $POSTGRES_UNAVAILABLE_REASON"
+  fi
+}
+
 # vi: expandtab sw=2 ts=2

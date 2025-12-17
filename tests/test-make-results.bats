@@ -26,6 +26,8 @@ setup() {
 }
 
 @test "make results establishes baseline expected output" {
+  skip_if_no_postgres
+  
   # Clean up any leftover files in test/output/ from previous test runs
   # (pg_regress uses test/output/ for diffs, but empty .source files might be left behind)
   # These can interfere with make_results.sh which checks for output/*.source files
@@ -47,6 +49,8 @@ setup() {
 }
 
 @test "expected output file exists with content" {
+  skip_if_no_postgres
+  
   assert_file_exists "test/expected/pgxntool-test.out"
   [ -s "test/expected/pgxntool-test.out" ]
 }
@@ -66,6 +70,8 @@ setup() {
 }
 
 @test "can modify expected output to create mismatch" {
+  skip_if_no_postgres
+  
   # Add a blank line to create a difference
   echo >> test/expected/pgxntool-test.out
 
@@ -76,6 +82,7 @@ setup() {
 }
 
 @test "make test shows diff with modified expected output" {
+  skip_if_no_postgres
   # Run make test (should show diffs due to mismatch)
   # Note: make test doesn't exit non-zero due to .IGNORE: installcheck
   run make test

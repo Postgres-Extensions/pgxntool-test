@@ -9,6 +9,27 @@ Test harness for [pgxntool](https://github.com/decibel/pgxntool), a PostgreSQL e
 - rsync
 - asciidoctor (for documentation tests)
 
+### PostgreSQL Configuration
+
+**IMPORTANT**: Tests that require PostgreSQL assume that you have configured your environment so that a plain `psql` command works. This means you should set the appropriate PostgreSQL environment variables:
+
+- `PGHOST` - PostgreSQL server host (default: localhost or Unix socket)
+- `PGPORT` - PostgreSQL server port (default: 5432)
+- `PGUSER` - PostgreSQL user (default: current system user)
+- `PGDATABASE` - Default database (default: same as PGUSER)
+- `PGPASSWORD` - Password (if required, or use `.pgpass` file)
+
+If these are not set, `psql` will use its defaults (typically connecting via Unix socket to a database matching your username). Tests will skip if PostgreSQL is not accessible.
+
+**Example setup**:
+```bash
+export PGHOST=localhost
+export PGPORT=5432
+export PGUSER=postgres
+export PGDATABASE=postgres
+export PGPASSWORD=mypassword  # Or use ~/.pgpass
+```
+
 ### Installing BATS
 
 ```bash

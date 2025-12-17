@@ -34,6 +34,7 @@ doc/other.html
 
 # Extension SQL files (root level, copied from t/)
 sql/
+sql/pgxntool-test--0.1.0.sql
 sql/pgxntool-test--0.1.0--0.1.1.sql
 sql/pgxntool-test.sql
 
@@ -54,6 +55,7 @@ t/doc/asc_doc.asc
 t/doc/asciidoc_doc.asciidoc
 t/doc/other.html
 t/sql/
+t/sql/pgxntool-test--0.1.0.sql
 t/sql/pgxntool-test--0.1.0--0.1.1.sql
 t/sql/pgxntool-test.sql
 t/TEST_DOC.asc
@@ -73,6 +75,7 @@ pgxntool/LICENSE
 pgxntool/META.in.json
 pgxntool/make_results.sh
 pgxntool/meta.mk.sh
+pgxntool/pgtle-wrap.sh
 pgxntool/safesed
 pgxntool/setup.sh
 pgxntool/WHAT_IS_THIS
