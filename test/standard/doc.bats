@@ -10,7 +10,7 @@
 # - make docclean should clean docs
 # - ASCIIDOC_EXTS controls which extensions are processed
 
-load helpers
+load ../lib/helpers
 
 # Helper function to get HTML files (excluding other.html)
 get_html() {
@@ -58,9 +58,8 @@ setup_file() {
     skip "asciidoc or asciidoctor not found"
   fi
 
-  # Set TOPDIR
-  cd "$BATS_TEST_DIRNAME/.."
-  export TOPDIR=$(pwd)
+  # Set TOPDIR to repository root
+  setup_topdir
 
   # Independent test - gets its own isolated environment with foundation TEST_REPO
   load_test_env "doc"

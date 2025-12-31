@@ -7,7 +7,7 @@
 # - Ephemeral files from output/*.source → expected/*.out are cleaned by make clean
 # - make results skips files that have output/*.source counterparts (source of truth)
 
-load helpers
+load ../lib/helpers
 
 # Debug function to list files matching a glob pattern
 # Usage: debug_ls LEVEL LABEL GLOB_PATTERN
@@ -67,8 +67,8 @@ transform_files() {
 
 setup_file() {
   # Set TOPDIR
-  cd "$BATS_TEST_DIRNAME/.."
-  export TOPDIR=$(pwd)
+  setup_topdir
+
 
   # Independent test - gets its own isolated environment with foundation TEST_REPO
   load_test_env "make-results-source"

@@ -186,7 +186,8 @@ validate_exact_distribution_contents() {
   fi
 
   # Load expected file list
-  local manifest_file="$BATS_TEST_DIRNAME/dist-expected-files.txt"
+  # dist-files.bash is in test/lib/, so we keep the manifest there as well
+  local manifest_file="${BASH_SOURCE[0]%/*}/dist-expected-files.txt"
   if [ ! -f "$manifest_file" ]; then
     echo "ERROR: Expected file manifest not found: $manifest_file"
     return 1

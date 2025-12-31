@@ -24,13 +24,13 @@
 # - Distribution format is correct (proper prefix, file structure)
 # - Repository remains clean after dist (no untracked files from build process)
 
-load helpers
-load dist-files
+load ../lib/helpers
+load ../lib/dist-files
 
 setup_file() {
   # Set TOPDIR
-  cd "$BATS_TEST_DIRNAME/.."
-  export TOPDIR=$(pwd)
+  setup_topdir
+
 
   # Independent test - gets its own isolated environment with foundation TEST_REPO
   load_test_env "dist-clean"
@@ -64,15 +64,16 @@ setup() {
   # OK to fail: Branch may not exist, which is fine for cleanup
   git branch -D "$VERSION" 2>/dev/null || true
 
-  # Also clean up any previous distribution file
-  rm -f "$DIST_FILE"
+  # Clean up any previous distribution file and generated files
+  run make clean
+  assert_success
 }
 
 @test "make dist succeeds from clean repository" {
   # This is the key test: make dist must work from a completely clean checkout.
   # It should build documentation, create versioned SQL files, and package everything.
   run make dist
-  assert_success_with_output
+  assert_success
 }
 
 @test "make dist creates distribution archive" {
@@ -107,7 +108,7 @@ setup() {
   # 1. Distribution behavior has changed (investigate why)
   # 2. Manifest needs updating (if change is intentional)
   run validate_exact_distribution_contents "$DIST_FILE"
-  assert_success_with_output
+  assert_success
 }
 
 @test "distribution contents pass pattern validation" {

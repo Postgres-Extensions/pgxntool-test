@@ -9,17 +9,8 @@
 # Assert that a command succeeded (exit status 0)
 # Usage: run some_command
 #        assert_success
-#        assert_success_with_output  # Includes output on failure
+# Outputs command output on failure to aid debugging
 assert_success() {
-  if [ "$status" -ne 0 ]; then
-    error "Command failed with exit status $status"
-  fi
-}
-
-# Assert that a command succeeded, showing output on failure
-# Usage: run some_command
-#        assert_success_with_output
-assert_success_with_output() {
   if [ "$status" -ne 0 ]; then
     out "Command failed with exit status $status"
     out "Output:"

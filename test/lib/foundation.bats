@@ -1,5 +1,27 @@
 #!/usr/bin/env bats
 
+# IMPORTANT: This file is both a test AND a library
+#
+# foundation.bats is an unusual file: it's technically a BATS test (it can be run
+# directly with `bats foundation.bats`), but it's really more of a library that
+# creates the base TEST_REPO environment that all other tests depend on.
+#
+# Because of this dual nature, it lives in test/lib/ alongside other library files
+# (helpers.bash, assertions.bash, etc.), but it's also executed as part of `make test-setup`.
+#
+# Why this matters:
+# - If foundation.bats fails when run inside another test (via ensure_foundation()),
+#   we don't get useful BATS output - the failure is hidden in the test that called it.
+# - Therefore, foundation.bats MUST be run directly as part of `make test-setup` BEFORE
+#   any other tests run, ensuring we get clear error messages if foundation setup fails.
+#
+# Usage:
+# - Direct execution: `make foundation` or `bats test/lib/foundation.bats`
+# - Automatic execution: `make test-setup` (runs foundation before other tests)
+# - Called by tests: `ensure_foundation()` in helpers.bash (see helpers.bash for details)
+#   Note: `ensure_foundation()` only runs foundation.bats if it doesn't already exist.
+#   If foundation is already complete, it just copies the existing foundation to the target.
+#
 # Test: Foundation - Create base TEST_REPO
 #
 # This is the foundation test that creates the minimal usable TEST_REPO environment.
@@ -7,7 +29,7 @@
 #
 # All other tests depend on this foundation:
 # - Sequential tests (01-meta, 02-dist, 03-setup-final) build on this base
-# - Independent tests (test-doc, test-make-results) copy this base to their own environment
+# - Independent tests (doc, make-results) copy this base to their own environment
 #
 # The foundation is created once in .envs/foundation/ and then copied to other
 # test environments for speed. Run `make foundation` to rebuild from scratch.
@@ -17,9 +39,8 @@ load helpers
 setup_file() {
   debug 1 ">>> ENTER setup_file: foundation (PID=$$)"
 
-  # Set TOPDIR
-  cd "$BATS_TEST_DIRNAME/.."
-  export TOPDIR=$(pwd)
+  # Set TOPDIR to repository root
+  setup_topdir
 
   # Foundation always runs in "foundation" environment
   load_test_env "foundation" || return 1

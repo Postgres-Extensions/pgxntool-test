@@ -5,7 +5,7 @@
 # Tests that setup.sh can be run multiple times safely and that
 # template files can be copied to their final locations
 
-load helpers
+load ../lib/helpers
 
 setup_file() {
   debug 1 ">>> ENTER setup_file: 03-setup-final (PID=$$)"
@@ -21,9 +21,9 @@ setup() {
 }
 
 teardown_file() {
-  debug 1 ">>> ENTER teardown_file: 04-setup-final (PID=$$)"
-  mark_test_complete "04-setup-final"
-  debug 1 "<<< EXIT teardown_file: 04-setup-final (PID=$$)"
+  debug 1 ">>> ENTER teardown_file: 03-setup-final (PID=$$)"
+  mark_test_complete "03-setup-final"
+  debug 1 "<<< EXIT teardown_file: 03-setup-final (PID=$$)"
 }
 
 @test "setup.sh can be run again" {

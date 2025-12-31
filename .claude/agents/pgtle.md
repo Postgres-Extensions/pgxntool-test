@@ -1,5 +1,7 @@
 ---
+name: pgtle
 description: Expert agent for pg_tle (Trusted Language Extensions for PostgreSQL)
+tools: [Read, Grep, Glob]
 ---
 
 # pg_tle Expert Agent
@@ -284,6 +286,34 @@ When testing pg_tle support:
 4. **Test SQL file discovery** - Verify all versions and upgrade paths are found
 5. **Test multi-extension support** - Verify separate files for each extension
 6. **Test schema parameter** - Verify it's included in 1.5.0+ files, excluded in 1.0.0-1.5.0 files
+
+### Installation Testing
+
+pgxntool provides `make check-pgtle` and `make install-pgtle` targets for installing generated pg_tle registration SQL:
+
+**`make check-pgtle`**:
+- Checks if pg_tle is installed in the cluster
+- Reports version from `pg_extension` if extension has been created
+- Reports newest available version from `pg_available_extension_versions` if available but not created
+- Errors if pg_tle not available
+- Assumes `PG*` environment variables are configured
+
+**`make install-pgtle`**:
+- Auto-detects pg_tle version (uses same logic as `check-pgtle`)
+- Updates or creates pg_tle extension as needed
+- Determines which version range files to install based on detected version
+- Runs all generated SQL files via `psql` to register extensions
+- Assumes `PG*` environment variables are configured
+
+**Test Structure**:
+- **Sequential test** (`04-pgtle.bats`): Tests SQL file generation only
+- **Independent test** (`test-pgtle-install.bats`): Tests actual installation and functionality using pgTap
+- **Optional test** (`test-pgtle-versions.bats`): Tests installation against each available pg_tle version
+
+**Installation Test Requirements**:
+- PostgreSQL must be running
+- pg_tle extension must be available in cluster (checked via `skip_if_no_pgtle`)
+- `pgtle_admin` role must exist (created automatically when pg_tle extension is installed)
 
 ## Common Issues and Solutions
 

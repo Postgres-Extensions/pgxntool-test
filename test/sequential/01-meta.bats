@@ -15,14 +15,13 @@
 # Foundation already replaced placeholders, so we test the regeneration
 # mechanism by modifying a different field and verifying META.json updates.
 
-load helpers
+load ../lib/helpers
 
 setup_file() {
   debug 1 ">>> ENTER setup_file: 01-meta (PID=$$)"
 
-  # Set TOPDIR first
-  cd "$BATS_TEST_DIRNAME/.."
-  export TOPDIR=$(pwd)
+  # Set TOPDIR to repository root
+  setup_topdir
 
   # Set up as sequential test with foundation prerequisite
   # setup_sequential_test handles pollution detection and runs foundation if needed

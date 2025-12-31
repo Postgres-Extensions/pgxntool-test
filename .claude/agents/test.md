@@ -1,3 +1,9 @@
+---
+name: test
+description: Expert agent for the pgxntool-test repository and its BATS testing infrastructure
+tools: [Read, Write, Edit, Bash, Grep, Glob]
+---
+
 # Test Agent
 
 You are an expert on the pgxntool-test repository and its entire test framework. You understand how tests work, how to run them, how the test system is architected, and all the nuances of the BATS testing infrastructure.
@@ -83,7 +89,7 @@ The pgxntool-test repository uses **BATS (Bash Automated Testing System)** to va
 
 ### Independent Tests
 
-**Pattern**: `test-*.bats` (e.g., `test-doc.bats`, `test-pgtle.bats`)
+**Pattern**: `test-*.bats` (e.g., `test-doc.bats`, `test-pgtle-install.bats`)
 
 **Characteristics**:
 - Run in isolation with fresh environments
@@ -97,7 +103,7 @@ The pgxntool-test repository uses **BATS (Bash Automated Testing System)** to va
 - `make results` behavior
 - Error handling
 - Edge cases
-- pg_tle support
+- pg_tle installation and functionality
 
 **Setup Pattern**: Independent tests typically use `ensure_foundation()` to get a fresh copy of the foundation TEST_REPO.
 
@@ -128,7 +134,8 @@ test/bats/bin/bats tests/04-setup-final.bats
 test/bats/bin/bats tests/test-doc.bats
 test/bats/bin/bats tests/test-make-test.bats
 test/bats/bin/bats tests/test-make-results.bats
-test/bats/bin/bats tests/test-pgtle.bats
+test/bats/bin/bats tests/04-pgtle.bats
+test/bats/bin/bats tests/test-pgtle-install.bats
 test/bats/bin/bats tests/test-gitattributes.bats
 test/bats/bin/bats tests/test-make-results-source-files.bats
 test/bats/bin/bats tests/test-dist-clean.bats
@@ -228,7 +235,8 @@ test/bats/bin/bats tests/04-setup-final.bats
 test/bats/bin/bats tests/test-doc.bats
 test/bats/bin/bats tests/test-make-test.bats
 test/bats/bin/bats tests/test-make-results.bats
-test/bats/bin/bats tests/test-pgtle.bats
+test/bats/bin/bats tests/04-pgtle.bats
+test/bats/bin/bats tests/test-pgtle-install.bats
 test/bats/bin/bats tests/test-gitattributes.bats
 test/bats/bin/bats tests/test-make-results-source-files.bats
 test/bats/bin/bats tests/test-dist-clean.bats
@@ -249,7 +257,9 @@ test/bats/bin/bats tests/test-doc.bats
 
 **pg_tle tests:**
 ```bash
-test/bats/bin/bats tests/test-pgtle.bats
+test/bats/bin/bats tests/04-pgtle.bats              # Sequential: generation tests
+test/bats/bin/bats tests/test-pgtle-install.bats    # Independent: installation tests
+test/bats/bin/bats tests/test-pgtle-versions.bats   # Independent: multi-version tests (optional)
 ```
 
 **Make results tests:**
@@ -277,17 +287,10 @@ test/bats/bin/bats tests/04-setup-final.bats
 
 ### Enable Debug Output
 
+Set the `DEBUG` environment variable to enable debug output. Higher values produce more verbose output:
+
 ```bash
-# Basic debug output
-DEBUG=1 test/bats/bin/bats tests/01-meta.bats
-
-# Verbose debug output
 DEBUG=2 test/bats/bin/bats tests/01-meta.bats
-
-# Maximum verbosity
-DEBUG=5 test/bats/bin/bats tests/01-meta.bats
-
-# Debug with make test
 DEBUG=2 make test
 ```
 
@@ -384,7 +387,9 @@ Tests use these environment variables (set by helpers):
 
 When asked to test a specific feature, identify which test file covers it:
 
-1. **pg_tle support**: `tests/test-pgtle.bats`
+1. **pg_tle generation**: `tests/04-pgtle.bats` (sequential)
+2. **pg_tle installation**: `tests/test-pgtle-install.bats` (independent)
+3. **pg_tle multi-version**: `tests/test-pgtle-versions.bats` (independent, optional)
 2. **Distribution creation**: `tests/02-dist.bats` (sequential) or `tests/test-dist-clean.bats` (independent)
 3. **Documentation generation**: `tests/test-doc.bats`
 4. **Make results**: `tests/test-make-results.bats` or `tests/test-make-results-source-files.bats`
@@ -410,7 +415,8 @@ make test
 ```bash
 # 1. Make changes to pgxntool
 # 2. Run specific test - it will automatically rebuild foundation if needed
-test/bats/bin/bats tests/test-pgtle.bats
+test/bats/bin/bats tests/04-pgtle.bats
+test/bats/bin/bats tests/test-pgtle-install.bats
 
 # Tests use ensure_foundation() which automatically rebuilds foundation if missing or stale
 # No need to run make foundation manually
@@ -426,7 +432,8 @@ test/bats/bin/bats tests/test-pgtle.bats
 make test
 
 # Or run specific test
-test/bats/bin/bats tests/test-pgtle.bats
+test/bats/bin/bats tests/04-pgtle.bats
+test/bats/bin/bats tests/test-pgtle-install.bats
 ```
 
 ### Validate Test Infrastructure Changes
@@ -447,13 +454,15 @@ make test
 
 # Or for specific test
 make clean
-test/bats/bin/bats tests/test-pgtle.bats
+test/bats/bin/bats tests/04-pgtle.bats
+test/bats/bin/bats tests/test-pgtle-install.bats
 ```
 
 **In normal operation**: Just run tests directly - they'll handle environment setup automatically:
 ```bash
 # Tests will automatically set up prerequisites and rebuild if needed
-test/bats/bin/bats tests/test-pgtle.bats
+test/bats/bin/bats tests/04-pgtle.bats
+test/bats/bin/bats tests/test-pgtle-install.bats
 ```
 
 **Always use `make clean` if you do need to clean**: Never use `rm -rf .envs/` directly. The Makefile ensures proper cleanup.
@@ -538,6 +547,19 @@ Independent tests can run in any order (they get fresh environments).
 - **Never manually modify `.envs/` directories** - tests handle this automatically
 - **Rarely need `make clean`** - only for debugging or forcing complete rebuild
 
+### File Management in Tests
+
+**CRITICAL RULE**: Tests should NEVER use `rm` to clean up files in the test template repo. Only `make clean` should be used for cleanup.
+
+**Rationale**: The Makefile is responsible for understanding dependencies and cleanup. Tests that manually delete files bypass the Makefile's dependency tracking and can lead to inconsistent test states or hide Makefile bugs.
+
+**Exception**: It IS acceptable to manually remove a file to test something directly related to that specific file (such as testing whether a make step will correctly recognize that the file is missing and rebuild it), but this should be a rare occurrence.
+
+**Examples**:
+- ❌ **WRONG**: `rm $TEST_REPO/generated_file.sql` to clean up before testing
+- ✅ **CORRECT**: `(cd $TEST_REPO && make clean)` to clean up before testing
+- ✅ **ACCEPTABLE**: `rm $TEST_REPO/generated_file.sql` when testing that `make` correctly rebuilds the missing file
+
 ### Cleaning Up
 
 **Always use `make clean`**, never `rm -rf .envs/`:
@@ -567,10 +589,12 @@ Independent tests can run in any order (they get fresh environments).
 make test
 
 # Specific test
-test/bats/bin/bats tests/test-pgtle.bats
+test/bats/bin/bats tests/04-pgtle.bats
+test/bats/bin/bats tests/test-pgtle-install.bats
 
 # With debug
-DEBUG=5 test/bats/bin/bats tests/test-pgtle.bats
+DEBUG=5 test/bats/bin/bats tests/04-pgtle.bats
+test/bats/bin/bats tests/test-pgtle-install.bats
 
 # Clean and run (rarely needed - tests auto-rebuild)
 make clean && make test

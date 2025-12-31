@@ -8,12 +8,12 @@
 # - Runs make results to update expected output
 # - Verifies make test now passes
 
-load helpers
+load ../lib/helpers
 
 setup_file() {
   # Set TOPDIR
-  cd "$BATS_TEST_DIRNAME/.."
-  export TOPDIR=$(pwd)
+  setup_topdir
+
 
   # Independent test - gets its own isolated environment with foundation TEST_REPO
   load_test_env "make-results"

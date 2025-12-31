@@ -22,8 +22,8 @@
 # would be at the root and tracked in git. This test verifies that pgxntool's
 # distribution logic works correctly whether files are tracked or not.
 
-load helpers
-load dist-files
+load ../lib/helpers
+load ../lib/dist-files
 
 setup_file() {
   debug 1 ">>> ENTER setup_file: 02-dist (PID=$$)"

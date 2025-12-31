@@ -8,7 +8,7 @@
 # - Standalone tests must NOT use state markers
 # - Sequential tests must be numbered consecutively
 
-load helpers
+load ../lib/helpers
 
 setup_file() {
   debug 1 ">>> ENTER setup_file: 00-validate-tests (PID=$$)"
@@ -38,7 +38,7 @@ teardown_file() {
   # run in the same parent process. Our PID-based safety mechanism (which prevents
   # destroying test environments while tests are running) depends on this being true.
   #
-  # See tests/README.pids.md for detailed explanation of BATS process model.
+  # See test/README.pids.md for detailed explanation of BATS process model.
 
   local test_name="00-validate-tests"
   local state_dir="$TEST_DIR/.bats-state"
@@ -69,7 +69,7 @@ teardown_file() {
     echo "  Current PID (in teardown_file): $$" >&2
     echo "This indicates setup_file() and teardown_file() are NOT running in the same process" >&2
     echo "Our PID safety mechanism relies on this assumption being correct" >&2
-    echo "See tests/README.pids.md for details" >&2
+    echo "See test/README.pids.md for details" >&2
     return 1
   fi
 
@@ -192,11 +192,11 @@ teardown_file() {
 }
 
 @test "PID safety documentation exists" {
-  cd "$BATS_TEST_DIRNAME"
+  cd "$BATS_TEST_DIRNAME/.."
 
   # Verify README.pids.md exists and contains key information
   if [ ! -f "README.pids.md" ]; then
-    echo "FAIL: tests/README.pids.md is missing" >&2
+    echo "FAIL: test/README.pids.md is missing" >&2
     echo "This file documents our PID safety mechanism and BATS process model" >&2
     return 1
   fi

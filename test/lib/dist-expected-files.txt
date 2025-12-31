@@ -75,7 +75,7 @@ pgxntool/LICENSE
 pgxntool/META.in.json
 pgxntool/make_results.sh
 pgxntool/meta.mk.sh
-pgxntool/pgtle-wrap.sh
+pgxntool/pgtle.sh
 pgxntool/safesed
 pgxntool/setup.sh
 pgxntool/WHAT_IS_THIS

@@ -7,13 +7,13 @@
 # - make dist succeeds with committed .gitattributes
 # - export-ignore directives in .gitattributes are respected in distributions
 
-load helpers
-load dist-files
+load ../lib/helpers
+load ../lib/dist-files
 
 setup_file() {
   # Set TOPDIR
-  cd "$BATS_TEST_DIRNAME/.."
-  export TOPDIR=$(pwd)
+  setup_topdir
+
 
   # Independent test - gets its own isolated environment with foundation TEST_REPO
   load_test_env "gitattributes"
@@ -104,7 +104,7 @@ EOF
 
   # make dist should now succeed
   run make dist
-  assert_success_with_output
+  assert_success
   [ -f "$dist_file" ] || error "Distribution file not found: $dist_file"
 
   # Verify .gitattributes is NOT in the distribution (export-ignore)
@@ -153,7 +153,7 @@ EOF
 
   # Create distribution
   run make dist
-  assert_success_with_output
+  assert_success
   [ -f "$dist_file" ]
 
   # Verify test-export-ignore.txt is NOT in the distribution

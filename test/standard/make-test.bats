@@ -7,12 +7,12 @@
 # - Uses test/output for expected outputs
 # - Doesn't recreate output when directories removed
 
-load helpers
+load ../lib/helpers
 
 setup_file() {
   # Set TOPDIR
-  cd "$BATS_TEST_DIRNAME/.."
-  export TOPDIR=$(pwd)
+  setup_topdir
+
 
   # Independent test - gets its own isolated environment with foundation TEST_REPO
   load_test_env "make-test"
@@ -79,19 +79,13 @@ setup() {
   assert_success
 }
 
-@test "expected output can be committed" {
-  # Check if there are untracked files in test/expected/
-  local untracked=$(git status --porcelain test/expected/ | grep '^??')
-
-  if [ -z "$untracked" ]; then
-    skip "No untracked files in test/expected/"
-  fi
-
-  # Add and commit
-  git add test/expected/
-  run git commit -m "Add test expected output"
-  assert_success
-}
+# NOTE: We used to have a test here that verified expected output files could be
+# committed to git. This was checking that the template repo stayed clean (i.e.,
+# no unexpected files were being generated in test/expected/). However, since
+# we don't currently have anything that should be dirtying the template repo,
+# that test isn't needed. If we add functionality that generates files in
+# test/expected/ during normal operations, we should add back a test to verify
+# those files can be committed.
 
 @test "can remove test directories" {
   # Remove input and output
