@@ -1,7 +1,6 @@
 ---
 name: subagent-tester
 description: Expert agent for testing Claude subagent files to ensure they work correctly
-tools: [Read, Bash, Grep, Glob]
 ---
 
 # Subagent Tester Agent

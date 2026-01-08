@@ -9,7 +9,7 @@ This file provides guidance for AI assistants (like Claude Code) when working wi
 The test system has three layers based on filename patterns:
 
 **Foundation (foundation.bats)**:
-- Creates the base TEST_REPO (clone + setup.sh + template files)
+- Creates the base TEST_REPO (git init + copy template files + pgxntool subtree + setup.sh)
 - Runs in `.envs/foundation/` environment
 - All other tests depend on this
 - Built once, then copied to other environments for speed
@@ -695,8 +695,8 @@ teardown_file() {
 load helpers
 
 setup_file() {
-  # Run prerequisites: clone → setup → meta
-  setup_independent_test "test-feature" "feature" "foundation" "foundation" "01-meta"
+  # Run prerequisites: foundation → meta
+  setup_independent_test "test-feature" "feature" "foundation" "01-meta"
 }
 
 setup() {
@@ -956,7 +956,7 @@ foundation runs tests with clean state...
 - State is expensive to create
 - Tests naturally run in order
 
-**Example**: Testing `make dist` (requires clone → setup → meta to work)
+**Example**: Testing `make dist` (requires foundation → meta to work)
 
 ### Use Independent Test When:
 - Testing a specific feature in isolation
@@ -1035,13 +1035,13 @@ Pollution detection ensures you're always testing against correct state.
 ### Q: Why not just clean environment before every test?
 
 **A**: Too slow. Running prerequisites for every test means:
-- Test 02 runs: clone
-- Test 03 runs: clone + setup
-- Test 04 runs: clone + setup + meta
-- Test 05 runs: clone + setup + meta + dist
+- Test 01 runs: foundation
+- Test 02 runs: foundation + 01-meta
+- Test 03 runs: foundation + 01-meta + 02-dist
+- Test 04 runs: foundation + 01-meta + 02-dist + 03-setup-final
 
-Full suite would run clone ~15 times. With state sharing:
-- Clone runs once
+Full suite would run foundation ~15 times. With state sharing:
+- Foundation runs once
 - Each test adds incremental work
 
 ### Q: Can I add helper functions to helpers.bash?

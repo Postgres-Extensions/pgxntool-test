@@ -307,7 +307,7 @@ is_clean_state() {
   done
 
   # Dynamically determine test order from directory (sorted)
-  local test_order=$(cd "$TOPDIR/tests" && ls [0-9][0-9]-*.bats 2>/dev/null | sort | sed 's/\.bats$//' | xargs)
+  local test_order=$(cd "$TOPDIR/test/sequential" && ls [0-9][0-9]-*.bats 2>/dev/null | sort | sed 's/\.bats$//' | xargs)
 
   debug 3 "is_clean_state: Test order: $test_order"
 
@@ -512,7 +512,17 @@ setup_sequential_test() {
   # 4. Ensure immediate prereq completed
   if [ -n "$immediate_prereq" ]; then
     debug 2 "setup_sequential_test: Checking prereq $immediate_prereq"
-    if [ ! -f "$TEST_DIR/.bats-state/.complete-$immediate_prereq" ]; then
+
+    # Foundation is special - it has its own environment with its own completion marker
+    # Check foundation's own marker, not sequential's copy
+    local prereq_complete_marker
+    if [ "$immediate_prereq" = "foundation" ]; then
+      prereq_complete_marker="$TOPDIR/.envs/foundation/.bats-state/.foundation-complete"
+    else
+      prereq_complete_marker="$TEST_DIR/.bats-state/.complete-$immediate_prereq"
+    fi
+
+    if [ ! -f "$prereq_complete_marker" ]; then
       # State marker doesn't exist - must run prerequisite
       # Individual @test blocks will skip if work is already done
       out "Running prerequisite: $immediate_prereq.bats"
@@ -520,7 +530,19 @@ setup_sequential_test() {
       # Run prereq (it handles its own deps recursively)
       # Filter stdout for TAP comments to FD3, leave stderr alone
       # OK to fail: grep returns non-zero if no matches, but we want empty output in that case
-      "$BATS_TEST_DIRNAME/../test/bats/bin/bats" "$BATS_TEST_DIRNAME/$immediate_prereq.bats" | { grep '^#' || true; } >&3
+
+      # Special case: foundation.bats lives in test/lib/, not test/sequential/
+      local prereq_path
+      if [ "$immediate_prereq" = "foundation" ]; then
+        prereq_path="$TOPDIR/test/lib/foundation.bats"
+      else
+        prereq_path="$BATS_TEST_DIRNAME/$immediate_prereq.bats"
+      fi
+
+      debug 3 "Prerequisite path: $prereq_path"
+      debug 3 "Running: $TOPDIR/test/bats/bin/bats $prereq_path"
+
+      "$TOPDIR/test/bats/bin/bats" "$prereq_path" | { grep '^#' || true; } >&3
       local prereq_status=${PIPESTATUS[0]}
       if [ $prereq_status -ne 0 ]; then
         out "ERROR: Prerequisite $immediate_prereq failed"
@@ -616,7 +638,16 @@ setup_nonsequential_test() {
       # Individual @test blocks will skip if work is already done
       out "Running prerequisite: $prereq.bats"
       # OK to fail: grep returns non-zero if no matches, but we want empty output in that case
-      "$BATS_TEST_DIRNAME/../test/bats/bin/bats" "$BATS_TEST_DIRNAME/$prereq.bats" | { grep '^#' || true; } >&3
+
+      # Special case: foundation.bats lives in test/lib/, not test/sequential/
+      local prereq_path
+      if [ "$prereq" = "foundation" ]; then
+        prereq_path="$TOPDIR/test/lib/foundation.bats"
+      else
+        prereq_path="$BATS_TEST_DIRNAME/$prereq.bats"
+      fi
+
+      "$TOPDIR/test/bats/bin/bats" "$prereq_path" | { grep '^#' || true; } >&3
       [ ${PIPESTATUS[0]} -eq 0 ] || return 1
       out "Prerequisite $prereq.bats completed"
     done
@@ -695,7 +726,7 @@ ensure_foundation() {
     local age=$((now - mtime))
     debug 3 "ensure_foundation: Foundation is $age seconds old"
 
-    if [ $age -gt 10 ]; then
+    if [ $age -gt 60 ]; then
       out "WARNING: Foundation is $age seconds old, may be out of date."
       out "         If you've modified pgxntool, run 'make foundation' to rebuild."
     fi
@@ -962,6 +993,52 @@ skip_if_no_pgtle() {
   if ! check_pgtle_available; then
     skip "pg_tle not available: $PGTLE_UNAVAILABLE_REASON"
   fi
+}
+
+# ============================================================================
+# Directory Management
+# ============================================================================
+
+# Change directory with assertion
+# Usage: assert_cd "directory"
+#
+# This function attempts to change to the specified directory and errors out
+# with a clear message if the cd fails. This is safer than bare `cd` commands
+# which can fail silently or cause confusing test failures.
+#
+# Examples:
+#   assert_cd "$TEST_REPO"
+#   assert_cd "$TEST_DIR"
+#   assert_cd /tmp
+assert_cd() {
+  local target_dir="$1"
+
+  if [ -z "$target_dir" ]; then
+    error "assert_cd: directory argument required"
+  fi
+
+  if ! cd "$target_dir" 2>/dev/null; then
+    error "Failed to cd to directory: $target_dir"
+  fi
+
+  debug 5 "Changed directory to: $PWD"
+  return 0
+}
+
+# Change to the test environment directory
+# Usage: cd_test_env
+#
+# This convenience function changes to TEST_REPO for tests that need to be
+# in the repository directory. For tests that run before TEST_REPO exists,
+# use assert_cd() directly instead.
+#
+# Examples:
+#   cd_test_env  # Changes to TEST_REPO
+#   assert_cd "$TEST_DIR"  # For early foundation tests
+cd_test_env() {
+  # Only handles the common case: cd to TEST_REPO
+  # For other cases, use assert_cd() directly
+  assert_cd "$TEST_REPO"
 }
 
 # Global variable to cache current pg_tle extension version

@@ -6,6 +6,24 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **IMPORTANT**: When creating commit messages, do not attribute commits to yourself (Claude). Commit messages should reflect the work being done without AI attribution in the message body. The standard Co-Authored-By trailer is acceptable.
 
+## Using Subagents
+
+**CRITICAL**: Always use ALL available subagents. Subagents are domain experts that provide specialized knowledge and should be consulted for their areas of expertise.
+
+Subagents are automatically discovered and loaded at session start from:
+- `.claude/agents/*.md` - Specialized domain experts (invoked via Task tool)
+- `.claude/commands/*.md` - Command/skill handlers (invoked via Skill tool)
+
+These subagents are already available in your context - you don't need to discover them. Just USE them whenever their expertise is relevant.
+
+**Key principle**: If a subagent exists for a topic, USE IT. Don't try to answer questions or make decisions in that domain without consulting the expert subagent first.
+
+**Important**: ANY backward-incompatible change to an API function we use MUST be treated as a version boundary. Consult the relevant subagent (e.g., pgtle for pg_tle API compatibility) to understand version boundaries correctly.
+
+### Session Startup: Check for New Versions
+
+**At the start of every session**: Invoke the pgtle subagent to check if there are any newer versions of pg_tle than what it has already analyzed. If new versions exist, the subagent should analyze them for API changes and update its knowledge of version boundaries.
+
 ## Startup Verification
 
 **CRITICAL**: Every time you start working in this repository, verify that `.claude/commands/commit.md` is a valid symlink:
@@ -29,10 +47,11 @@ test -f .claude/commands/commit.md && echo "Symlink is valid" || echo "ERROR: Sy
 **pgxntool-test** is the test harness for validating **../pgxntool/** (a PostgreSQL extension build framework).
 
 This repo tests pgxntool by:
-1. Cloning **../pgxntool-test-template/** (a minimal "dummy" extension with pgxntool embedded)
-2. Running pgxntool operations (setup, build, test, dist, etc.)
-3. Validating results with semantic assertions
-4. Reporting pass/fail
+1. Creating a fresh test repository (git init + copying extension files from **../pgxntool-test-template/t/**)
+2. Adding pgxntool via git subtree and running setup.sh
+3. Running pgxntool operations (build, test, dist, etc.)
+4. Validating results with semantic assertions
+5. Reporting pass/fail
 
 ## The Three-Repository Pattern
 
@@ -40,7 +59,7 @@ This repo tests pgxntool by:
 - **../pgxntool-test-template/** - A minimal PostgreSQL extension that serves as test subject
 - **pgxntool-test/** (this repo) - The test harness that validates pgxntool's behavior
 
-**Key insight**: pgxntool cannot be tested in isolation because it's designed to be embedded in other projects. So we clone a template project, inject pgxntool, and test the combination.
+**Key insight**: pgxntool cannot be tested in isolation because it's designed to be embedded in other projects. So we create a fresh repository with template extension files, add pgxntool via subtree, and test the combination.
 
 ### Important: pgxntool Directory Purity
 
@@ -55,6 +74,20 @@ This repo tests pgxntool by:
 - **pgxntool-test/** - Test infrastructure, BATS tests, test helpers
 - **pgxntool-test-template/** - Example extension files for testing
 - Your local environment - Convenience scripts that don't need to be in version control
+
+### Critical: .gitattributes Belongs ONLY in pgxntool
+
+**RULE**: This repository (pgxntool-test) should NEVER have a `.gitattributes` file.
+
+**Why**:
+- `.gitattributes` controls what gets included in `git archive` (used by `make dist`)
+- Only pgxntool needs `.gitattributes` because it's the one being distributed
+- pgxntool-test is a development/testing repo that never gets distributed
+- Having `.gitattributes` here would be confusing and serve no purpose
+
+**If you see `.gitattributes` in pgxntool-test**: Remove it immediately. It shouldn't exist here.
+
+**Where it belongs**: `../pgxntool/.gitattributes` is the correct location - it controls what gets excluded from distributions when extension developers run `make dist`.
 
 ## How Tests Work
 
@@ -84,7 +117,7 @@ Tests create isolated environments in `.envs/` directory:
 **Environment variables** (from setup functions in tests/helpers.bash):
 - `TOPDIR` - pgxntool-test repo root
 - `TEST_DIR` - Environment-specific workspace (.envs/sequential/, .envs/doc/, etc.)
-- `TEST_REPO` - Cloned test project location (`$TEST_DIR/repo`)
+- `TEST_REPO` - Test project location (`$TEST_DIR/repo`)
 - `PGXNREPO` - Location of pgxntool (defaults to `../pgxntool`)
 - `PGXNBRANCH` - Branch to use (defaults to `master`)
 - `TEST_TEMPLATE` - Template repo (defaults to `../pgxntool-test-template`)
@@ -95,7 +128,7 @@ Tests create isolated environments in `.envs/` directory:
 Tests are organized by filename patterns:
 
 **Foundation Layer:**
-- **foundation.bats** - Creates base TEST_REPO (clone + setup.sh + template files)
+- **foundation.bats** - Creates base TEST_REPO (git init + copy template files + pgxntool subtree + setup.sh)
 
 **Sequential Tests (Pattern: `[0-9][0-9]-*.bats`):**
 - Run in numeric order, each building on previous test's work
@@ -126,6 +159,25 @@ test/bats/bin/bats tests/01-meta.bats
 test/bats/bin/bats tests/02-dist.bats
 test/bats/bin/bats tests/03-setup-final.bats
 ```
+
+### CRITICAL: Test Environment Isolation
+
+**DO NOT run tests in parallel!** Test runs share the same `.envs/` directory and will clobber each other.
+
+**Examples of what NOT to do:**
+- Running `make test` while a test agent is running tests
+- Running two separate test commands simultaneously
+- Having the main thread run tests while a subagent is also running tests
+
+**Why this matters:**
+- Tests create and modify shared state in `.envs/sequential/`, `.envs/foundation/`, etc.
+- Parallel test runs will corrupt each other's environments
+- Results will be unpredictable and incorrect
+
+**Safe approach:**
+- Wait for any running tests to complete before starting new tests
+- Use agents OR run tests directly, never both simultaneously
+- If an agent is testing, wait for it to finish before running your own tests
 
 ### Smart Test Execution
 

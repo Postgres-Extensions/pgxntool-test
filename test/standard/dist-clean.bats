@@ -127,8 +127,9 @@ setup() {
   local files=$(get_distribution_files "$DIST_FILE")
 
   # These are specific to pgxntool-test-template structure
-  echo "$files" | grep -q "t/TEST_DOC\.asc"
-  echo "$files" | grep -q "t/doc/.*\.asc"
+  # Foundation copies template files to root, so they appear at root in distribution
+  echo "$files" | grep -q "TEST_DOC\.asc"
+  echo "$files" | grep -q "doc/.*\.asc"
 }
 
 # vi: expandtab sw=2 ts=2

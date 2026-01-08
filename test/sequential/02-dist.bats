@@ -122,9 +122,10 @@ teardown_file() {
   local files=$(get_distribution_files "$DIST_FILE")
 
   # These are specific to pgxntool-test-template structure
-  echo "$files" | grep -q "t/TEST_DOC\.asc"
-  echo "$files" | grep -q "t/doc/asc_doc\.asc"
-  echo "$files" | grep -q "t/doc/asciidoc_doc\.asciidoc"
+  # Foundation copies template files to root, so they appear at root in distribution
+  echo "$files" | grep -q "TEST_DOC\.asc"
+  echo "$files" | grep -q "doc/asc_doc\.asc"
+  echo "$files" | grep -q "doc/asciidoc_doc\.asciidoc"
 }
 
 @test "make dist fails with untracked files" {

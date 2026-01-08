@@ -11,14 +11,13 @@
 # Lines starting with # are comments
 # Blank lines are ignored
 #
-# KNOWN ISSUES (TODO):
-# - t/ directory duplication should be resolved (files are at root AND in t/)
+# RESOLVED ISSUES:
+# - t/ directory is no longer duplicated - template files copied directly to root
 #
-# Last updated: During foundation + template file setup
+# Last updated: After foundation.bats refactoring (git init + copy template approach)
 
 # Root-level configuration and metadata
 .gitignore
-CLAUDE.md
 Makefile
 META.in.json
 META.json
@@ -45,24 +44,6 @@ test/input/
 test/input/pgxntool-test.source
 test/pgxntool
 
-# TODO: Template directory (should this be in distributions?)
-# In real extensions, these files would be at root only, not duplicated in t/
-t/
-t/.gitignore
-t/doc/
-t/doc/adoc_doc.adoc
-t/doc/asc_doc.asc
-t/doc/asciidoc_doc.asciidoc
-t/doc/other.html
-t/sql/
-t/sql/pgxntool-test--0.1.0.sql
-t/sql/pgxntool-test--0.1.0--0.1.1.sql
-t/sql/pgxntool-test.sql
-t/TEST_DOC.asc
-t/test/
-t/test/input/
-t/test/input/pgxntool-test.source
-
 # pgxntool framework (the build system itself)
 pgxntool/
 pgxntool/_.gitignore
@@ -72,8 +53,9 @@ pgxntool/build_meta.sh
 pgxntool/JSON.sh
 pgxntool/JSON.sh.LICENSE
 pgxntool/LICENSE
-pgxntool/META.in.json
+pgxntool/lib.sh
 pgxntool/make_results.sh
+pgxntool/META.in.json
 pgxntool/meta.mk.sh
 pgxntool/pgtle.sh
 pgxntool/safesed

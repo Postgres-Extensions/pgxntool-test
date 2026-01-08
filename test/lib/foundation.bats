@@ -54,23 +54,43 @@ setup_file() {
 setup() {
   load_test_env "foundation"
 
-  # Only cd to TEST_REPO if it exists
-  # Tests 1-2 create the directory, so they don't need to be in it
-  # Tests 3+ need to be in TEST_REPO
+  # Early tests (1-2) run before TEST_REPO exists, so cd to TEST_DIR
+  # Later tests (3+) run inside TEST_REPO after it's created
   if [ -d "$TEST_REPO" ]; then
-    cd "$TEST_REPO"
+    assert_cd "$TEST_REPO"
+  else
+    assert_cd "$TEST_DIR"
   fi
 }
 
 teardown_file() {
   debug 1 ">>> ENTER teardown_file: foundation (PID=$$)"
   mark_test_complete "foundation"
+
+  # Create foundation-complete marker for ensure_foundation() to find
+  # This is a different marker than .complete-foundation because:
+  # - .complete-foundation is for sequential test tracking
+  # - .foundation-complete is for ensure_foundation() to check if foundation is ready
+  local state_dir="$TEST_DIR/.bats-state"
+  date '+%Y-%m-%d %H:%M:%S.%N %z' > "$state_dir/.foundation-complete"
+
   debug 1 "<<< EXIT teardown_file: foundation (PID=$$)"
 }
 
 # ============================================================================
-# CLONE TESTS - Create and configure repository
+# REPOSITORY INITIALIZATION - Create fresh git repo with extension files
 # ============================================================================
+#
+# This section creates a realistic extension repository from scratch:
+# 1. Create directory
+# 2. git init (fresh repository)
+# 3. Copy extension files from template/t/ to root
+# 4. Commit extension files (realistic: extension exists before pgxntool)
+# 5. Add fake remote (for testing git operations)
+# 6. Push to fake remote
+#
+# This matches the real-world scenario: "I have an existing extension,
+# now I want to add pgxntool to it."
 
 @test "test environment variables are set" {
   [ -n "$TEST_TEMPLATE" ]
@@ -80,40 +100,80 @@ teardown_file() {
 }
 
 @test "can create TEST_REPO directory" {
-  # Skip if already exists (prerequisite already met)
-  if [ -d "$TEST_REPO" ]; then
-    skip "TEST_REPO already exists"
-  fi
+  # Should not exist yet - if it does, environment cleanup failed
+  [ ! -d "$TEST_REPO" ]
 
   mkdir "$TEST_REPO"
   [ -d "$TEST_REPO" ]
 }
 
-@test "template repository clones successfully" {
-  # Skip if already cloned
-  if [ -d "$TEST_REPO/.git" ]; then
-    skip "TEST_REPO already cloned"
-  fi
+@test "git repository is initialized" {
+  # Should not be initialized yet - if it is, previous test failed to clean up
+  [ ! -d "$TEST_REPO/.git" ]
 
-  # Clone the template
-  run git clone "$TEST_TEMPLATE" "$TEST_REPO"
+  run git init
   assert_success
   [ -d "$TEST_REPO/.git" ]
 }
 
+@test "template files are copied to root" {
+  # Copy extension source files from t/ directory to root
+  # Exclude .DS_Store (macOS system file)
+  rsync -a --exclude='.DS_Store' "$TEST_TEMPLATE"/t/ .
+}
+
+# CRITICAL: This test makes TEST_REPO behave like a real extension repository.
+#
+# In real extensions using pgxntool, source files (doc/, sql/, test/input/)
+# are tracked in git. We commit them FIRST, before adding pgxntool, to match
+# the realistic scenario: "I have an existing extension, now I want to add pgxntool."
+#
+# WHY THIS MATTERS: `make dist` uses `git archive` which only packages tracked
+# files. Without committing these files, distributions would be empty.
+@test "template files are committed" {
+  # Template files should be untracked at this point
+  run git status --porcelain
+  assert_success
+  local untracked=$(echo "$output" | grep "^??" || echo "")
+  [ -n "$untracked" ]
+
+  # Add all untracked files (extension source files)
+  git add .
+  run git commit -m "Initial extension files
+
+These are the source files for the pgxntool-test extension.
+In a real extension, these would already exist before adding pgxntool."
+  assert_success
+
+  # Verify commit succeeded (no untracked files remain)
+  run git status --porcelain
+  assert_success
+  local remaining=$(echo "$output" | grep "^??" || echo "")
+  [ -z "$remaining" ]
+}
+
+# CRITICAL: Fake remote is REQUIRED for `make dist` to work.
+#
+# WHY: The `make dist` target (in pgxntool/base.mk) has prerequisite `tag`, which does:
+#   1. git branch $(PGXNVERSION)       - Create branch for version
+#   2. git push --set-upstream origin $(PGXNVERSION)  - Push to remote
+#
+# Without a remote named "origin", step 2 fails and `make dist` cannot complete.
+#
+# This matches real-world usage: extension repositories typically have git remotes
+# configured (GitHub, GitLab, etc.). The fake remote simulates this realistic setup.
+#
+# ATTEMPTED: Removing these tests causes `make dist` to fail with:
+#   "fatal: 'origin' does not appear to be a git repository"
 @test "fake git remote is configured" {
-  cd "$TEST_REPO"
+  # Should not have origin remote yet
+  run git remote get-url origin
+  assert_failure
 
-  # Skip if already configured
-  if git remote get-url origin 2>/dev/null | grep -q "fake_repo"; then
-    skip "Fake remote already configured"
-  fi
-
-  # Create fake remote
+  # Create fake remote (bare repository to accept pushes)
   git init --bare ../fake_repo >/dev/null 2>&1
 
-  # Replace origin with fake
-  git remote remove origin
+  # Add fake remote
   git remote add origin ../fake_repo
 
   # Verify
@@ -122,12 +182,10 @@ teardown_file() {
 }
 
 @test "current branch pushes to fake remote" {
-  cd "$TEST_REPO"
-
-  # Skip if already pushed
-  if git branch -r | grep -q "origin/"; then
-    skip "Already pushed to fake remote"
-  fi
+  # Should not have any remote branches yet
+  run git branch -r
+  assert_success
+  [ -z "$output" ]
 
   local current_branch=$(git symbolic-ref --short HEAD)
   run git push --set-upstream origin "$current_branch"
@@ -141,13 +199,20 @@ teardown_file() {
   assert_success
 }
 
-@test "pgxntool is added to repository" {
-  cd "$TEST_REPO"
+# ============================================================================
+# PGXNTOOL INTEGRATION - Add pgxntool to the extension
+# ============================================================================
+#
+# This section adds pgxntool to the existing extension repository:
+# 1. Add pgxntool via git subtree (or rsync if source is dirty)
+# 2. Validate pgxntool was added correctly
+#
+# This happens AFTER the extension files exist, matching the workflow:
+# "I have an extension, now I'm adding the pgxntool framework to it."
 
-  # Skip if pgxntool already exists
-  if [ -d "pgxntool" ]; then
-    skip "pgxntool directory already exists"
-  fi
+@test "pgxntool is added to repository" {
+  # pgxntool should not exist yet - if it does, environment cleanup failed
+  [ ! -d "pgxntool" ]
 
   # Validate prerequisites before attempting git subtree
   # 1. Check PGXNREPO is accessible and safe
@@ -220,18 +285,19 @@ teardown_file() {
 }
 
 @test "dirty pgxntool triggers rsync path (or skipped if clean)" {
-  cd "$TEST_REPO"
-
   # This test verifies the rsync logic for dirty local pgxntool repos
-  # Skip if pgxntool repo is not local or not dirty
-  if ! echo "$PGXNREPO" | grep -q "^\.\./"; then
-    if ! echo "$PGXNREPO" | grep -q "^/"; then
-      skip "PGXNREPO is not a local path"
-    fi
+  # Check if pgxntool repo is local
+  if ! echo "$PGXNREPO" | grep -qE "^(\.\./|/)"; then
+    # Not a local path - rsync not applicable
+    # In this case, the test is not relevant, and there should be no rsync commit
+    run git log --oneline --grep="Committing unsaved pgxntool changes"
+    # If PGXNREPO is not local, rsync commit should NOT exist
+    [ -z "$output" ]
+    return 0
   fi
 
   if [ ! -d "$PGXNREPO" ]; then
-    skip "PGXNREPO directory does not exist"
+    error "PGXNREPO should be a valid directory: $PGXNREPO"
   fi
 
   # Check if it's dirty and on the right branch
@@ -239,22 +305,20 @@ teardown_file() {
   local current_branch=$(cd "$PGXNREPO" && git symbolic-ref --short HEAD)
 
   if [ -z "$is_dirty" ]; then
-    skip "PGXNREPO is not dirty - rsync path not needed"
+    # PGXNREPO is clean - rsync should NOT have been used
+    run git log --oneline --grep="Committing unsaved pgxntool changes"
+    [ -z "$output" ]
+  elif [ "$current_branch" != "$PGXNBRANCH" ]; then
+    # PGXNREPO is dirty but on wrong branch - should have failed in previous test
+    error "PGXNREPO is dirty but on wrong branch ($current_branch, expected $PGXNBRANCH)"
+  else
+    # PGXNREPO is dirty and on correct branch - rsync should have been used
+    run git log --oneline -1 --grep="Committing unsaved pgxntool changes"
+    assert_success
   fi
-
-  if [ "$current_branch" != "$PGXNBRANCH" ]; then
-    skip "PGXNREPO is on $current_branch, not $PGXNBRANCH"
-  fi
-
-  # If we got here, rsync should have been used
-  # Look for the commit message about uncommitted changes
-  run git log --oneline -1 --grep="Committing unsaved pgxntool changes"
-  assert_success
 }
 
 @test "TEST_REPO is a valid git repository after clone" {
-  cd "$TEST_REPO"
-
   # Final validation of clone phase
   [ -d ".git" ]
   run git status
@@ -266,24 +330,16 @@ teardown_file() {
 # ============================================================================
 
 @test "META.json does not exist before setup" {
-  cd "$TEST_REPO"
-
-  # Skip if Makefile exists (setup already ran)
-  if [ -f "Makefile" ]; then
-    skip "setup.sh already completed"
-  fi
+  # Makefile should not exist yet - if it does, previous steps failed
+  [ ! -f "Makefile" ]
 
   # META.json should NOT exist yet
   [ ! -f "META.json" ]
 }
 
 @test "setup.sh fails on dirty repository" {
-  cd "$TEST_REPO"
-
-  # Skip if Makefile already exists (setup already ran)
-  if [ -f "Makefile" ]; then
-    skip "setup.sh already completed"
-  fi
+  # Makefile should not exist yet
+  [ ! -f "Makefile" ]
 
   # Make repo dirty
   touch garbage
@@ -291,7 +347,7 @@ teardown_file() {
 
   # setup.sh should fail
   run pgxntool/setup.sh
-  [ "$status" -ne 0 ]
+  assert_failure
 
   # Clean up
   git reset HEAD garbage
@@ -299,15 +355,12 @@ teardown_file() {
 }
 
 @test "setup.sh runs successfully on clean repository" {
-  cd "$TEST_REPO"
-
-  # Skip if Makefile already exists
-  if [ -f "Makefile" ]; then
-    skip "Makefile already exists"
-  fi
+  # Makefile should not exist yet
+  [ ! -f "Makefile" ]
 
   # Repository should be clean
   run git status --porcelain
+  assert_success
   [ -z "$output" ]
 
   # Run setup.sh
@@ -316,8 +369,6 @@ teardown_file() {
 }
 
 @test "setup.sh creates Makefile" {
-  cd "$TEST_REPO"
-
   assert_file_exists "Makefile"
 
   # Should include pgxntool/base.mk
@@ -325,55 +376,45 @@ teardown_file() {
 }
 
 @test "setup.sh creates .gitignore" {
-  cd "$TEST_REPO"
-
   # Check if .gitignore exists (either in . or ..)
   [ -f ".gitignore" ] || [ -f "../.gitignore" ]
 }
 
 @test "META.in.json still exists after setup" {
-  cd "$TEST_REPO"
-
   # setup.sh should not remove META.in.json
   assert_file_exists "META.in.json"
 }
 
 @test "setup.sh generates META.json from META.in.json" {
-  cd "$TEST_REPO"
-
   # META.json should be created by setup.sh (even with placeholders)
   # It will be regenerated with correct values after we fix META.in.json
   assert_file_exists "META.json"
 }
 
 @test "setup.sh creates meta.mk" {
-  cd "$TEST_REPO"
-
   assert_file_exists "meta.mk"
 }
 
 @test "setup.sh creates test directory structure" {
-  cd "$TEST_REPO"
-
   assert_dir_exists "test"
   assert_file_exists "test/deps.sql"
 }
 
 @test "setup.sh changes can be committed" {
-  cd "$TEST_REPO"
-
-  # Skip if already committed (check for modified/staged files, not untracked)
-  local changes=$(git status --porcelain | grep -v '^??')
-  if [ -z "$changes" ]; then
-    skip "No changes to commit"
-  fi
+  # Should have modified/staged files at this point (from setup.sh)
+  run git status --porcelain
+  assert_success
+  local changes=$(echo "$output" | grep -v '^??')
+  [ -n "$changes" ]
 
   # Commit the changes
   run git commit -am "Test setup"
   assert_success
 
   # Verify no tracked changes remain (ignore untracked files)
-  local remaining=$(git status --porcelain | grep -v '^??')
+  run git status --porcelain
+  assert_success
+  local remaining=$(echo "$output" | grep -v '^??')
   [ -z "$remaining" ]
 }
 
@@ -389,12 +430,8 @@ teardown_file() {
 # See pgxntool/build_meta.sh for details on the META.in.json → META.json pattern.
 
 @test "replace placeholders in META.in.json" {
-  cd "$TEST_REPO"
-
-  # Skip if already replaced
-  if ! grep -q "DISTRIBUTION_NAME\|EXTENSION_NAME" META.in.json; then
-    skip "Placeholders already replaced"
-  fi
+  # Should still have placeholders at this point
+  grep -q "DISTRIBUTION_NAME\|EXTENSION_NAME" META.in.json
 
   # Replace both DISTRIBUTION_NAME and EXTENSION_NAME with pgxntool-test
   # Note: sed -i.bak + rm is the simplest portable solution (works on macOS BSD sed and GNU sed)
@@ -409,24 +446,18 @@ teardown_file() {
 }
 
 @test "commit META.in.json changes" {
-  cd "$TEST_REPO"
-
-  # Skip if no changes
-  if git diff --quiet META.in.json 2>/dev/null; then
-    skip "No META.in.json changes to commit"
-  fi
+  # Should have changes to META.in.json at this point
+  run git diff --quiet META.in.json
+  assert_failure
 
   git add META.in.json
   git commit -m "Configure extension name to pgxntool-test"
 }
 
 @test "make automatically regenerates META.json from META.in.json" {
-  cd "$TEST_REPO"
-
-  # Skip if META.json already has correct name
-  if grep -q "pgxntool-test" META.json && ! grep -q "DISTRIBUTION_NAME" META.json; then
-    skip "META.json already correct"
-  fi
+  # META.json should still have placeholders at this point
+  # (setup.sh creates it, but we haven't run make yet after updating META.in.json)
+  grep -q "DISTRIBUTION_NAME\|EXTENSION_NAME" META.json
 
   # Run make - it will automatically regenerate META.json because META.in.json changed
   # (META.json has META.in.json as a dependency in the Makefile)
@@ -438,8 +469,6 @@ teardown_file() {
 }
 
 @test "META.json contains correct values" {
-  cd "$TEST_REPO"
-
   # Verify META.json has the correct extension name, not placeholders
   grep -q "pgxntool-test" META.json
   ! grep -q "DISTRIBUTION_NAME" META.json
@@ -447,20 +476,15 @@ teardown_file() {
 }
 
 @test "commit auto-generated META.json" {
-  cd "$TEST_REPO"
-
-  # Skip if no changes
-  if git diff --quiet META.json 2>/dev/null; then
-    skip "No META.json changes to commit"
-  fi
+  # Should have changes to META.json at this point (from make regenerating it)
+  run git diff --quiet META.json
+  assert_failure
 
   git add META.json
   git commit -m "Update META.json (auto-generated from META.in.json)"
 }
 
 @test "repository is in valid state after setup" {
-  cd "$TEST_REPO"
-
   # Final validation
   assert_file_exists "Makefile"
   assert_file_exists "META.json"
@@ -469,66 +493,6 @@ teardown_file() {
   # Should be able to run make
   run make --version
   assert_success
-}
-
-@test "template files are copied to root" {
-  cd "$TEST_REPO"
-
-  # Skip if already copied
-  if [ -f "TEST_DOC.asc" ]; then
-    skip "Template files already copied"
-  fi
-
-  # Copy template files from t/ to root
-  [ -d "t" ] || skip "No t/ directory"
-
-  cp -R t/* .
-
-  # Verify files exist
-  [ -f "TEST_DOC.asc" ] || [ -d "doc" ] || [ -d "sql" ]
-}
-
-# CRITICAL: This test makes TEST_REPO behave like a real extension repository.
-#
-# In real extensions using pgxntool, source files (doc/, sql/, test/input/)
-# are tracked in git. Our test template has them in t/ for historical reasons,
-# but we copy them to root here.
-#
-# WHY THIS MATTERS: `make dist` uses `git archive` which only packages tracked
-# files. Without committing these files, distributions would be empty.
-@test "template files are committed" {
-  cd "$TEST_REPO"
-
-  # Check if template files need to be committed
-  local files_to_add=""
-  if [ -f "TEST_DOC.asc" ] && git status --porcelain TEST_DOC.asc | grep -q "^??"; then
-    files_to_add="$files_to_add TEST_DOC.asc"
-  fi
-  if [ -d "doc" ] && git status --porcelain doc/ | grep -q "^??"; then
-    files_to_add="$files_to_add doc/"
-  fi
-  if [ -d "sql" ] && git status --porcelain sql/ | grep -q "^??"; then
-    files_to_add="$files_to_add sql/"
-  fi
-  if [ -d "test/input" ] && git status --porcelain test/input/ | grep -q "^??"; then
-    files_to_add="$files_to_add test/input/"
-  fi
-
-  if [ -z "$files_to_add" ]; then
-    skip "No untracked template files to commit"
-  fi
-
-  # Add template files
-  git add $files_to_add
-  run git commit -m "Add extension template files
-
-These files would normally be part of the extension repository.
-They're copied from t/ to root as part of extension setup."
-  assert_success
-
-  # Verify commit succeeded (no untracked template files remain)
-  local untracked=$(git status --porcelain | grep "^?? " | grep -E "(TEST_DOC|doc/|sql/|test/input/)" || echo "")
-  [ -z "$untracked" ]
 }
 
 # CRITICAL: This test enables `make dist` to work from a clean repository.
@@ -543,39 +507,35 @@ They're copied from t/ to root as part of extension setup."
 #
 # By ignoring *.html, generated docs don't make the repo dirty, but are still
 # included in distributions (git archive uses index + HEAD, not working tree).
+#
+# Similarly, meta.mk is a generated file (from META.in.json) that should be ignored.
 @test ".gitignore includes generated documentation" {
-  cd "$TEST_REPO"
+  # Check what needs to be added (at least one should be missing)
+  local needs_html=0
+  local needs_meta_mk=0
 
-  # Check if already added
-  if grep -q "^\*.html$" .gitignore; then
-    skip "*.html already in .gitignore"
+  if ! grep -q "^\*.html$" .gitignore; then
+    needs_html=1
   fi
 
-  echo "*.html" >> .gitignore
+  if ! grep -q "^meta\.mk$" .gitignore; then
+    needs_meta_mk=1
+  fi
+
+  # At least one of these should be missing at this point
+  [ $needs_html -eq 1 ] || [ $needs_meta_mk -eq 1 ]
+
+  # Add what's needed
+  if [ $needs_html -eq 1 ]; then
+    echo "*.html" >> .gitignore
+  fi
+
+  if [ $needs_meta_mk -eq 1 ]; then
+    echo "meta.mk" >> .gitignore
+  fi
+
   git add .gitignore
-  git commit -m "Ignore generated HTML documentation"
+  git commit -m "Ignore generated files (HTML documentation and meta.mk)"
 }
-
-@test ".gitattributes is committed for export-ignore support" {
-  cd "$TEST_REPO"
-
-  # Skip if already committed
-  if git ls-files --error-unmatch .gitattributes >/dev/null 2>&1; then
-    skip ".gitattributes already committed"
-  fi
-
-  # Create .gitattributes if it doesn't exist (template has it but it's not tracked)
-  if [ ! -f ".gitattributes" ]; then
-    cat > .gitattributes <<EOF
-.gitattributes export-ignore
-.claude/ export-ignore
-EOF
-  fi
-
-  # Commit .gitattributes so export-ignore works in make dist
-  git add .gitattributes
-  git commit -m "Add .gitattributes for export-ignore support"
-}
-
 
 # vi: expandtab sw=2 ts=2
