@@ -34,7 +34,7 @@ echo "Creating pgxntool-test worktree..."
 cd "$SCRIPT_DIR/.."
 git worktree add "$WORKTREE_DIR/pgxntool-test"
 
-echo ""
+echo
 echo "Worktrees created successfully in:"
 echo "  $WORKTREE_DIR/"
 echo "    ├── pgxntool/"

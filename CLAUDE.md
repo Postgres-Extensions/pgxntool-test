@@ -302,3 +302,4 @@ test/bats/bin/bats tests/02-dist.bats
 - You should never have to run rm -rf .envs; the test system should always know how to handle .envs
 - do not hard code things that can be determined in other ways. For example, if we need to do something to a subset of files, look for ways to list the files that meet the specification
 - when documenting things avoid refering to the past, unless it's a major change. People generally don't need to know about what *was*, they only care about what we have now
+- NEVER use `echo ""` to print a blank line; just use `echo` with no arguments

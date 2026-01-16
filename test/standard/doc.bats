@@ -16,10 +16,10 @@ load ../lib/helpers
 get_html() {
   local other_html="$1"
   # OK to fail: ls returns non-zero if no files match, which is a valid state
-  local html_files=$(cd "$TEST_DIR/doc_repo" && ls doc/*.html 2>/dev/null || echo "")
+  local html_files=$(cd "$TEST_DIR/doc_repo" && ls doc/*.html 2>/dev/null || echo)
 
   if [ -z "$html_files" ]; then
-    echo ""
+    echo
     return
   fi
 
@@ -77,7 +77,7 @@ setup() {
 
 @test "documentation source files exist" {
   # OK to fail: ls returns non-zero if no files match, which would mean test should fail
-  local doc_files=$(ls "$TEST_DIR/doc_repo/doc"/*.adoc "$TEST_DIR/doc_repo/doc"/*.asciidoc 2>/dev/null || echo "")
+  local doc_files=$(ls "$TEST_DIR/doc_repo/doc"/*.adoc "$TEST_DIR/doc_repo/doc"/*.asciidoc 2>/dev/null || echo)
   [ -n "$doc_files" ]
 }
 

@@ -162,7 +162,7 @@ get_distribution_files() {
   local dist_file="$1"
 
   if [ ! -f "$dist_file" ]; then
-    echo ""
+    echo
     return 1
   fi
 
@@ -205,10 +205,10 @@ validate_exact_distribution_contents() {
 
   if [ -n "$diff_output" ]; then
     echo "ERROR: Distribution contents differ from expected manifest"
-    echo ""
+    echo
     echo "Differences (< expected, > actual):"
     echo "$diff_output"
-    echo ""
+    echo
     echo "This indicates distribution contents have changed."
     echo "If this change is intentional, update dist-expected-files.txt"
     return 1

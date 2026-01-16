@@ -47,7 +47,6 @@ ifneq ($(GIT_DIRTY),)
 	@echo "Git repo is dirty (uncommitted changes detected)"
 	@echo "Running recursion test first to validate test infrastructure..."
 	$(MAKE) test-recursion
-	@echo ""
 	@echo "Recursion test passed, now running full test suite..."
 endif
 	@$(MAKE) clean-envs
@@ -55,25 +54,47 @@ endif
 	@test/bats/bin/bats test/lib/foundation.bats
 
 # Run standard tests - sequential tests in order, then standard independent tests
-# Excludes optional/extra tests (e.g., test-pgtle-versions.bats) which are only run in test-extra
+# Excludes optional/extra tests (e.g., test-pgtle-versions.bats) - use test-extra or test-all for those
 #
 # Note: We explicitly list all sequential tests rather than just running the last one
 # because BATS only outputs TAP results for the test files directly invoked.
 # If we only ran the last test, prerequisite tests would run but their results
 # wouldn't appear in the output.
 .PHONY: test
-test: test-setup
+test:
+	@echo
+	@echo "Tip: Use 'make test-extra' for additional tests, or 'make test-all' for everything"
+	@echo
+	@$(MAKE) test-setup
 	@test/bats/bin/bats $(SEQUENTIAL_TESTS) $(STANDARD_TESTS)
+	@echo
+	@echo "Tip: Use 'make test-extra' for additional tests, or 'make test-all' for everything"
+	@echo
 
-# Run regular test suite PLUS extra/optional tests (e.g., test-pgtle-versions.bats)
-# This passes all test files to bats in a single invocation for proper TAP output
+# Run ONLY extra/optional tests (e.g., test-pgtle-versions.bats)
+# These tests have additional requirements (like multiple pg_tle versions installed)
+# Use test-all to run standard tests plus extra tests together
 .PHONY: test-extra
-test-extra: test-setup
+test-extra:
 ifneq ($(EXTRA_TESTS),)
-	@test/bats/bin/bats $(SEQUENTIAL_TESTS) $(STANDARD_TESTS) $(EXTRA_TESTS)
+	@echo
+	@echo "Tip: Use 'make test-all' to run both standard and extra tests"
+	@echo
+	@$(MAKE) test-setup
+	@test/bats/bin/bats $(EXTRA_TESTS)
+	@echo
+	@echo "Tip: Use 'make test-all' to run both standard and extra tests"
+	@echo
 else
-	@test/bats/bin/bats $(SEQUENTIAL_TESTS) $(STANDARD_TESTS)
+	@echo "No extra tests found in test/extra/"
 endif
+
+# Run regular test suite PLUS extra/optional tests
+# This passes all test files to bats in a single invocation for proper TAP output
+.PHONY: test-all
+test-all:
+	@$(MAKE) test-setup
+	@test/bats/bin/bats $(SEQUENTIAL_TESTS) $(STANDARD_TESTS) $(EXTRA_TESTS)
 
 # Clean test environments
 .PHONY: clean-envs
@@ -127,13 +148,10 @@ check-readme:
 	fi; \
 	if [ $$OUT_OF_DATE -eq 1 ]; then \
 		echo "ERROR: pgxntool/README.html is out of date relative to README.asc" >&2; \
-		echo "" >&2; \
 		echo "Rebuilding as a convenience, but this is an ERROR condition..." >&2; \
 		$(MAKE) -s readme 2>/dev/null || true; \
-		echo "" >&2; \
 		echo "README.html has been automatically updated, but you must commit the change." >&2; \
 		echo "This check ensures README.html stays up-to-date for automated testing." >&2; \
-		echo "" >&2; \
 		echo "To fix this, run: cd ../pgxntool && git add README.html && git commit" >&2; \
 		exit 1; \
 	fi

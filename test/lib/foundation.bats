@@ -145,7 +145,7 @@ teardown_file() {
   # Template files should be untracked at this point
   run git status --porcelain
   assert_success
-  local untracked=$(echo "$output" | grep "^??" || echo "")
+  local untracked=$(echo "$output" | grep "^??" || echo)
   [ -n "$untracked" ]
 
   # Add all untracked files (extension source files)
@@ -159,7 +159,7 @@ In a real extension, these would already exist before adding pgxntool."
   # Verify commit succeeded (no untracked files remain)
   run git status --porcelain
   assert_success
-  local remaining=$(echo "$output" | grep "^??" || echo "")
+  local remaining=$(echo "$output" | grep "^??" || echo)
   [ -z "$remaining" ]
 }
 

@@ -54,7 +54,7 @@ setup() {
 @test "pgtle-versions: test each available pg_tle version" {
   # Query all available versions
   local versions
-  versions=$(psql -X -tAc "SELECT version FROM pg_available_extension_versions WHERE name = 'pg_tle' ORDER BY version;" 2>/dev/null || echo "")
+  versions=$(psql -X -tAc "SELECT version FROM pg_available_extension_versions WHERE name = 'pg_tle' ORDER BY version;" 2>/dev/null || echo)
   
   if [ -z "$versions" ]; then
     skip "No pg_tle versions available for testing"
@@ -63,14 +63,13 @@ setup() {
   # Process each version
   while IFS= read -r version; do
     [ -z "$version" ] && continue
-    
-    echo "Testing with pg_tle version: $version"
-    
+
+    out -f "Testing with pg_tle version: $version"
+
     # Ensure pg_tle extension is at the requested version
     # This must succeed - we're testing known available versions
     if ! ensure_pgtle_extension "$version"; then
-      echo "ERROR: Failed to install pg_tle version $version: $PGTLE_EXTENSION_ERROR" >&2
-      exit 1
+      error "Failed to install pg_tle version $version: $PGTLE_EXTENSION_ERROR"
     fi
     
     # Run make check-pgtle (should report the version we just created)
@@ -86,11 +85,11 @@ setup() {
     local sql_file="${BATS_TEST_DIRNAME}/pgtle-versions.sql"
     run psql -X -v ON_ERROR_STOP=1 -f "$sql_file" 2>&1
     if [ "$status" -ne 0 ]; then
-      echo "psql command failed with exit status $status" >&2
-      echo "SQL file: $sql_file" >&2
-      echo "pg_tle version: $version" >&2
-      echo "Output:" >&2
-      echo "$output" >&2
+      out -f "psql command failed with exit status $status"
+      out -f "SQL file: $sql_file"
+      out -f "pg_tle version: $version"
+      out -f "Output:"
+      out -f "$output"
     fi
     assert_success "SQL tests failed for pg_tle version $version"
     

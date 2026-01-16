@@ -7,53 +7,32 @@ allowed-tools: Bash(git status:*), Bash(git log:*), Bash(git add:*), Bash(git di
 
 Create a git commit following all project standards and safety protocols for pgxntool-test.
 
-**FIRST: Check BOTH repositories for changes**
-
-**CRITICAL**: Before doing ANYTHING else, you MUST check git status in both repositories to understand the full scope of changes:
-
-```bash
-# Check pgxntool (main framework)
-echo "=== pgxntool status ==="
-cd ../pgxntool && git status
-
-# Check pgxntool-test (test harness)
-echo "=== pgxntool-test status ==="
-cd ../pgxntool-test && git status
-```
-
-**Why this matters**: Work on pgxntool frequently involves changes across both repositories. You need to understand the complete picture before committing anywhere.
-
-**IMPORTANT**: If BOTH repositories have changes, you should commit BOTH of them (unless the user explicitly says otherwise). This ensures related changes stay synchronized across the repos.
-
-**DO NOT create empty commits** - Only commit repos that actually have changes (modified/untracked files). If a repo has no changes, skip it.
-
----
-
 **CRITICAL REQUIREMENTS:**
 
 1. **Git Safety**: Never update `git config`, never force push to `main`/`master`, never skip hooks unless explicitly requested
 
 2. **Commit Attribution**: Do NOT add "Generated with Claude Code" to commit message body. The standard Co-Authored-By trailer is acceptable per project CLAUDE.md.
 
-3. **Testing**: ALL tests must pass before committing:
-   - Run `make test`
-   - Check the output carefully for any "not ok" lines
-   - Count passing vs total tests
+3. **Multi-Repo Commits**: If BOTH repositories have changes, commit BOTH (unless user explicitly says otherwise). Do NOT create empty commits - only commit repos with actual changes.
+
+4. **Testing**: ALL tests must pass before committing:
+   - Tests are run via test subagent (first step in workflow)
+   - Check subagent output carefully for any "not ok" lines
    - **If ANY tests fail: STOP. Do NOT commit. Ask the user what to do.**
    - There is NO such thing as an "acceptable" failing test
    - Do NOT rationalize failures as "pre-existing" or "unrelated"
 
 **WORKFLOW:**
 
-1. Run in parallel: `git status`, `git diff --stat`, `git log -10 --oneline`
+1. **Launch test subagent** (unless user explicitly says not to):
+   - Use Task tool to launch test subagent to run `make test`
+   - Run in background so we can continue with analysis
+   - Tests will be checked before committing
 
-2. Check test status - THIS IS MANDATORY:
-   - Run `make test 2>&1 | tee /tmp/test-output.txt`
-   - Check for failing tests: `grep "^not ok" /tmp/test-output.txt`
-   - If ANY tests fail: STOP immediately and inform the user
-   - Only proceed if ALL tests pass
+2. **While tests run**, gather information in parallel:
+   - `git status`, `git diff --stat`, `git log -10 --oneline` for both repos
 
-3. Analyze changes in BOTH repositories and draft commit messages for BOTH:
+3. **Analyze changes** in BOTH repositories and draft commit messages for BOTH:
 
    **CRITICAL: Item Ordering**
    - Order all items (changes, bullet points) by **decreasing importance**
@@ -118,7 +97,15 @@ cd ../pgxntool-test && git status
 
    **Note:** If only one repo has changes, show only that message (with note about other repo).
 
-5. **After receiving approval, execute two-phase commit:**
+5. **Wait for tests to complete** - THIS IS MANDATORY:
+   - Check test subagent output for completion
+   - Verify ALL tests passed (no "not ok" lines)
+   - **If ANY tests fail: STOP. Do NOT commit. Ask the user what to do.**
+   - There is NO such thing as an "acceptable" failing test
+   - Do NOT rationalize failures as "pre-existing" or "unrelated"
+   - Only proceed to commit if ALL tests pass
+
+6. **After tests pass AND receiving approval, execute two-phase commit:**
 
    **Phase 1: Commit pgxntool**
 
@@ -181,13 +168,9 @@ cd ../pgxntool-test && git status
 
 **MULTI-REPO COMMIT CONTEXT:**
 
-**CRITICAL**: Work on pgxntool frequently involves changes across both repositories simultaneously:
-- **pgxntool** (this repo) - The main framework
-- **pgxntool-test** (at `../pgxntool-test/`) - Test harness (includes template files in `template/` directory)
-
-**This is why you MUST check both repositories at the start** (see FIRST step above).
-
-**DEFAULT BEHAVIOR: Commit ALL repos with changes together** - If both repos have changes when you check them, you should plan to commit BOTH repos (unless user explicitly specifies otherwise). This keeps related changes synchronized. **Do NOT create empty commits** - only commit repos with actual modified/untracked files.
+The two repositories:
+- **pgxntool** - The main framework
+- **pgxntool-test** - Test harness (includes template files in `template/` directory)
 
 When committing changes that span repositories:
 

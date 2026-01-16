@@ -258,6 +258,39 @@ test/bats/bin/bats tests/04-pgtle.bats  # Auto-rebuilds foundation via ensure_fo
 
 ---
 
+## Output Buffering Behavior (Piped vs. Terminal)
+
+**BATS output behaves differently when run through a pipe vs. directly in a terminal.**
+
+### Why This Matters
+
+Claude (and other tools) typically runs tests through the Bash tool, which captures/pipes output. This means:
+
+- **Claude sees**: Output buffered until test completion, may miss real-time progress messages
+- **Human in terminal sees**: Real-time progress output as tests run
+
+This is standard Unix buffering behavior - stdout is line-buffered in terminals but fully buffered when piped.
+
+### The `out()` Function Workaround
+
+The `out()` function in `helpers.bash` uses a space+backspace trick to force flushing:
+```bash
+# Forces flush by writing space then backspace
+printf " \b"
+```
+
+This helps ensure debug output appears promptly, but there may still be differences between piped and terminal execution.
+
+### Practical Implications
+
+1. **If debugging output seems missing**: The output may be buffered and will appear at test completion
+2. **For real-time debugging**: Run tests directly in a terminal rather than through a tool
+3. **Don't assume Claude sees what you see**: Progress indicators and real-time feedback behave differently
+
+**Reference**: https://stackoverflow.com/questions/68759687
+
+---
+
 ## Quick Reference
 
 ```bash

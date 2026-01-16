@@ -47,9 +47,17 @@ setup_topdir() {
 
 # Output to terminal (always visible)
 # Usage: out "message"
+#        out -f "message"  # flush immediately (for piped output)
 # Outputs to FD 3 which BATS sends directly to terminal
+# The -f flag uses a space+backspace trick to force immediate flushing when piped.
+# See https://stackoverflow.com/questions/68759687 for why this works.
 out() {
-  echo "# $*" >&3
+  local prefix=''
+  if [ "$1" = "-f" ]; then
+    prefix=' \b'
+    shift
+  fi
+  echo -e "$prefix# $*" >&3
 }
 
 # Error message and return failure
@@ -69,7 +77,7 @@ debug() {
   local message="$*"
 
   if [ "${DEBUG:-0}" -ge "$level" ]; then
-    out "DEBUG[$level]: $message"
+    out -f "DEBUG[$level]: $message"
   fi
 }
 
@@ -890,7 +898,7 @@ get_psql_path() {
   # Return cached result if available
   if [ -n "${_PSQL_PATH:-}" ]; then
     if [ "$_PSQL_PATH" = "__NOT_FOUND__" ]; then
-      echo ""
+      echo
       return 1
     else
       echo "$_PSQL_PATH"
@@ -902,12 +910,12 @@ get_psql_path() {
   if ! psql_path=$(command -v psql 2>/dev/null); then
     # Try to find psql via pg_config
     local pg_bindir
-    pg_bindir=$(pg_config --bindir 2>/dev/null || echo "")
+    pg_bindir=$(pg_config --bindir 2>/dev/null || echo)
     if [ -n "$pg_bindir" ] && [ -x "$pg_bindir/psql" ]; then
       psql_path="$pg_bindir/psql"
     else
       _PSQL_PATH="__NOT_FOUND__"
-      echo ""
+      echo
       return 1
     fi
   fi
@@ -1108,7 +1116,7 @@ ensure_pgtle_extension() {
   
   # Check current version if not cached
   if [ "$_PGTLE_VERSION_CHECKED" != "checked" ]; then
-    _PGTLE_CURRENT_VERSION=$("$psql_path" -X -tAc "SELECT extversion FROM pg_extension WHERE extname = 'pg_tle';" 2>/dev/null | tr -d '[:space:]' || echo "")
+    _PGTLE_CURRENT_VERSION=$("$psql_path" -X -tAc "SELECT extversion FROM pg_extension WHERE extname = 'pg_tle';" 2>/dev/null | tr -d '[:space:]' || echo)
     _PGTLE_VERSION_CHECKED="checked"
   fi
   
@@ -1126,7 +1134,7 @@ ensure_pgtle_extension() {
           PGTLE_EXTENSION_ERROR="pg_tle not configured in shared_preload_libraries (add 'pg_tle' to shared_preload_libraries in postgresql.conf and restart PostgreSQL)"
         elif echo "$create_error" | grep -qi "extension.*already exists"; then
           # Extension exists but wasn't in cache, refresh cache and continue
-          _PGTLE_CURRENT_VERSION=$("$psql_path" -X -tAc "SELECT extversion FROM pg_extension WHERE extname = 'pg_tle';" 2>/dev/null | tr -d '[:space:]' || echo "")
+          _PGTLE_CURRENT_VERSION=$("$psql_path" -X -tAc "SELECT extversion FROM pg_extension WHERE extname = 'pg_tle';" 2>/dev/null | tr -d '[:space:]' || echo)
         else
           # Use first 5 lines of error for context
           PGTLE_EXTENSION_ERROR="Failed to create pg_tle extension: $(echo "$create_error" | head -5 | tr '\n' '; ' | sed 's/; $//')"
@@ -1136,11 +1144,11 @@ ensure_pgtle_extension() {
         fi
       fi
       # Update cache after creation
-      _PGTLE_CURRENT_VERSION=$("$psql_path" -X -tAc "SELECT extversion FROM pg_extension WHERE extname = 'pg_tle';" 2>/dev/null | tr -d '[:space:]' || echo "")
+      _PGTLE_CURRENT_VERSION=$("$psql_path" -X -tAc "SELECT extversion FROM pg_extension WHERE extname = 'pg_tle';" 2>/dev/null | tr -d '[:space:]' || echo)
     else
       # Extension exists, check if update needed
       local newest_version
-      newest_version=$("$psql_path" -X -tAc "SELECT MAX(version) FROM pg_available_extension_versions WHERE name = 'pg_tle';" 2>/dev/null | tr -d '[:space:]' || echo "")
+      newest_version=$("$psql_path" -X -tAc "SELECT MAX(version) FROM pg_available_extension_versions WHERE name = 'pg_tle';" 2>/dev/null | tr -d '[:space:]' || echo)
       if [ -n "$newest_version" ] && [ "$_PGTLE_CURRENT_VERSION" != "$newest_version" ]; then
         local update_error
         if ! update_error=$("$psql_path" -X -c "ALTER EXTENSION pg_tle UPDATE;" 2>&1); then
@@ -1148,7 +1156,7 @@ ensure_pgtle_extension() {
           return 1
         fi
         # Update cache
-        _PGTLE_CURRENT_VERSION=$("$psql_path" -X -tAc "SELECT extversion FROM pg_extension WHERE extname = 'pg_tle';" 2>/dev/null | tr -d '[:space:]' || echo "")
+        _PGTLE_CURRENT_VERSION=$("$psql_path" -X -tAc "SELECT extversion FROM pg_extension WHERE extname = 'pg_tle';" 2>/dev/null | tr -d '[:space:]' || echo)
       fi
     fi
   else
@@ -1167,7 +1175,7 @@ ensure_pgtle_extension() {
         return 1
       fi
       # Update cache
-      _PGTLE_CURRENT_VERSION=$("$psql_path" -X -tAc "SELECT extversion FROM pg_extension WHERE extname = 'pg_tle';" 2>/dev/null | tr -d '[:space:]' || echo "")
+      _PGTLE_CURRENT_VERSION=$("$psql_path" -X -tAc "SELECT extversion FROM pg_extension WHERE extname = 'pg_tle';" 2>/dev/null | tr -d '[:space:]' || echo)
     elif [ "$_PGTLE_CURRENT_VERSION" != "$requested_version" ]; then
       # Extension exists at different version, try to update first
       local update_error
@@ -1205,7 +1213,7 @@ ensure_pgtle_extension() {
         fi
       fi
       # Update cache
-      _PGTLE_CURRENT_VERSION=$("$psql_path" -X -tAc "SELECT extversion FROM pg_extension WHERE extname = 'pg_tle';" 2>/dev/null | tr -d '[:space:]' || echo "")
+      _PGTLE_CURRENT_VERSION=$("$psql_path" -X -tAc "SELECT extversion FROM pg_extension WHERE extname = 'pg_tle';" 2>/dev/null | tr -d '[:space:]' || echo)
     fi
     # Verify we're at the requested version
     if [ "$_PGTLE_CURRENT_VERSION" != "$requested_version" ]; then
