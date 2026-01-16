@@ -82,9 +82,9 @@ teardown_file() {
   # This happens AFTER make and make html have run, proving that prior
   # build operations don't break distribution creation.
 
-  # Clean up version branch if it exists (make dist creates this branch)
-  # OK to fail: Branch may not exist from previous runs, which is fine
-  git branch -D "$VERSION" 2>/dev/null || true
+  # Clean up version tag if it exists (make dist creates this tag)
+  # OK to fail: Tag may not exist from previous runs, which is fine
+  git tag -d "$VERSION" 2>/dev/null || true
 
   run make dist
   [ "$status" -eq 0 ]

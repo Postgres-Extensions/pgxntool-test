@@ -166,8 +166,8 @@ In a real extension, these would already exist before adding pgxntool."
 # CRITICAL: Fake remote is REQUIRED for `make dist` to work.
 #
 # WHY: The `make dist` target (in pgxntool/base.mk) has prerequisite `tag`, which does:
-#   1. git branch $(PGXNVERSION)       - Create branch for version
-#   2. git push --set-upstream origin $(PGXNVERSION)  - Push to remote
+#   1. git tag $(PGXNVERSION)          - Create tag for version
+#   2. git push origin $(PGXNVERSION)  - Push tag to remote
 #
 # Without a remote named "origin", step 2 fails and `make dist` cannot complete.
 #

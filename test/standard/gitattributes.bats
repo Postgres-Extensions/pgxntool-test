@@ -98,8 +98,8 @@ EOF
   local version=$(grep '"version"' META.json | sed 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/' | head -1)
   local dist_file="../${distribution_name}-${version}.zip"
 
-  # Clean up version branch if it exists (local and remote)
-  git branch -D "$version" 2>/dev/null || true
+  # Clean up version tag if it exists (local and remote)
+  git tag -d "$version" 2>/dev/null || true
   git push origin --delete "$version" 2>/dev/null || true
 
   # make dist should now succeed
@@ -140,8 +140,8 @@ EOF
   local version=$(grep '"version"' META.json | sed 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/' | head -1)
   local dist_file="../${distribution_name}-${version}.zip"
 
-  # Clean up version branch if it exists (local and remote)
-  git branch -D "$version" 2>/dev/null || true
+  # Clean up version tag if it exists (local and remote)
+  git tag -d "$version" 2>/dev/null || true
   git push origin --delete "$version" 2>/dev/null || true
 
   # Ensure repo is clean before make dist (allow untracked files, just no modified/tracked changes)

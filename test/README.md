@@ -14,7 +14,7 @@ The BATS test system uses **semantic assertions** instead of string-based output
 
 **Characteristics**:
 - Run in numerical order (00, 01, 02, ...)
-- Share a single test environment (`.envs/sequential/`)
+- Share a single test environment (`test/.envs/sequential/`)
 - Build state incrementally (each test depends on previous)
 - Use state markers to track execution
 - Detect environment pollution
@@ -34,7 +34,7 @@ The BATS test system uses **semantic assertions** instead of string-based output
 
 **Characteristics**:
 - Run in isolation with fresh environments
-- Each test gets its own environment (`.envs/doc/`, `.envs/results/`)
+- Each test gets its own environment (`test/.envs/doc/`, `test/.envs/results/`)
 - Can run in parallel (no shared state)
 - Rebuild prerequisites from scratch each time
 - No pollution detection needed
@@ -51,7 +51,7 @@ The BATS test system uses **semantic assertions** instead of string-based output
 
 ### State Markers
 
-Sequential tests use marker files and lock directories in `.envs/<env>/.bats-state/`:
+Sequential tests use marker files and lock directories in `test/.envs/<env>/.bats-state/`:
 
 1. **`.start-<test-name>`** - Test has started
 2. **`.complete-<test-name>`** - Test has completed successfully
@@ -193,7 +193,7 @@ Creates a new test environment.
 
 **What it does**:
 1. Calls `clean_env` to safely remove existing environment
-2. Creates directory structure: `.envs/<env-name>/.bats-state/`
+2. Creates directory structure: `test/.envs/<env-name>/.bats-state/`
 3. Writes `.env` file with TEST_DIR, TEST_REPO, etc.
 
 ### State Marker Functions

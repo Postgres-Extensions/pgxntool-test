@@ -129,7 +129,7 @@ In `clean_env()`:
 ```bash
 clean_env() {
   local env_name=$1
-  local env_dir="$TOPDIR/.envs/$env_name"
+  local env_dir="$TOPDIR/test/.envs/$env_name"
   local state_dir="$env_dir/.bats-state"
 
   # Check for running tests
@@ -176,14 +176,14 @@ $ bats 02-setup.bats
 # Creates .pid-02-setup with parent PID
 
 # Terminal 2: Try to clean while test 1 is running
-$ rm -rf .envs/sequential
+$ rm -rf test/.envs/sequential
 # clean_env() checks .pid-02-setup, finds process alive, refuses
 
 # Terminal 1: Test completes
 # teardown_file() removes .pid-02-setup
 
 # Terminal 2: Now safe to clean
-$ rm -rf .envs/sequential
+$ rm -rf test/.envs/sequential
 # clean_env() checks .pid-02-setup, finds it doesn't exist, proceeds
 ```
 
@@ -230,7 +230,7 @@ $ bats 03-meta.bats     # Different process, can't coordinate with 02
 .bats-state/.pid-03-meta → 12350
 
 # Terminal 3: Try to clean
-$ rm -rf .envs/sequential
+$ rm -rf test/.envs/sequential
 # clean_env() checks ALL PID files:
 #   - .pid-02-setup: PID 12345 alive → ERROR, refuse
 #   - .pid-03-meta: PID 12350 alive → ERROR, refuse
@@ -256,7 +256,7 @@ $ rm -rf .envs/sequential
 2. Stale PIDs (from crashes) are only checked with `kill -0`
 3. If PID was reused by unrelated process, we'd detect it's alive and refuse to clean
 4. This is conservative (safe) - worst case is refusing to clean when we could
-5. User can manually clean if truly stale: `rm -rf .envs/`
+5. User can manually clean if truly stale: `rm -rf test/.envs/`
 
 ## Implementation Notes
 
@@ -305,7 +305,7 @@ $ bats 03-meta.bats       # Foreground
 ### Check Running Tests
 
 ```bash
-cd .envs/sequential/.bats-state
+cd test/.envs/sequential/.bats-state
 
 for pid_file in .pid-*; do
   [ -f "$pid_file" ] || continue
@@ -325,7 +325,7 @@ done
 
 ```bash
 # See what process is actually running
-pid=$(cat .envs/sequential/.bats-state/.pid-02-setup)
+pid=$(cat test/.envs/sequential/.bats-state/.pid-02-setup)
 ps -fp "$pid"
 
 # See full process tree
@@ -336,7 +336,7 @@ pstree -p "$pid"
 
 ```bash
 # If you're SURE no tests are running but clean_env refuses:
-rm -rf .envs/sequential
+rm -rf test/.envs/sequential
 ```
 
 ## Summary

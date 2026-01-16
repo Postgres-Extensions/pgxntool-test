@@ -59,10 +59,10 @@ setup() {
   # Should have no output (repo is clean)
   [ -z "$output" ]
 
-  # Clean up any existing version branch (from previous runs)
-  # make dist creates a branch with the version number, and will fail if it exists
-  # OK to fail: Branch may not exist, which is fine for cleanup
-  git branch -D "$VERSION" 2>/dev/null || true
+  # Clean up any existing version tag (from previous runs)
+  # make dist creates a tag with the version number
+  # OK to fail: Tag may not exist, which is fine for cleanup
+  git tag -d "$VERSION" 2>/dev/null || true
 
   # Clean up any previous distribution file and generated files
   run make clean

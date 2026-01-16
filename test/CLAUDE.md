@@ -10,14 +10,14 @@ The test system has three layers based on filename patterns:
 
 **Foundation (foundation.bats)**:
 - Creates the base TEST_REPO (git init + copy template files + pgxntool subtree + setup.sh)
-- Runs in `.envs/foundation/` environment
+- Runs in `test/.envs/foundation/` environment
 - All other tests depend on this
 - Built once, then copied to other environments for speed
 
 **Sequential Tests (Pattern: `[0-9][0-9]-*.bats`)**:
 - Tests numbered 00-99 (e.g., 00-validate-tests.bats, 01-meta.bats, 02-dist.bats)
 - Run in numeric order, each building on previous test's work
-- Share state in `.envs/sequential/` environment
+- Share state in `test/.envs/sequential/` environment
 - Each test **assumes** previous tests completed successfully
 - Example: 02-dist.bats expects META.json to exist from 01-meta.bats
 

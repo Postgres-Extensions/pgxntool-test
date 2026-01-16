@@ -110,7 +110,7 @@ Tests are organized by filename pattern:
 **Sequential Tests (Pattern: `[0-9][0-9]-*.bats`):**
 - Run in numeric order, each building on previous test's work
 - Examples: 00-validate-tests, 01-meta, 02-dist, 03-setup-final
-- Share state in `.envs/sequential/` environment
+- Share state in `test/.envs/sequential/` environment
 
 **Independent Tests (Pattern: `test-*.bats`):**
 - Each gets its own isolated environment

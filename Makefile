@@ -100,7 +100,7 @@ test-all:
 .PHONY: clean-envs
 clean-envs:
 	@echo "Removing test environments..."
-	@rm -rf .envs
+	@rm -rf test/.envs
 
 .PHONY: clean
 clean: clean-envs

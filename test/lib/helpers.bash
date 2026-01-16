@@ -86,7 +86,7 @@ debug() {
 # Usage: clean_env "sequential"
 clean_env() {
   local env_name=$1
-  local env_dir="$TOPDIR/.envs/$env_name"
+  local env_dir="$TOPDIR/test/.envs/$env_name"
 
   debug 5 "clean_env: Cleaning $env_name at $env_dir"
 
@@ -118,7 +118,7 @@ clean_env() {
   out "Removing $env_name environment..."
 
   # SECURITY: Ensure we're only deleting .envs subdirectories
-  if [[ "$env_dir" != "$TOPDIR/.envs/"* ]]; then
+  if [[ "$env_dir" != "$TOPDIR/test/.envs/"* ]]; then
     error "Refusing to clean directory outside .envs: $env_dir"
   fi
 
@@ -130,7 +130,7 @@ clean_env() {
 # Usage: create_env "sequential" or create_env "doc"
 create_env() {
   local env_name=$1
-  local env_dir="$TOPDIR/.envs/$env_name"
+  local env_dir="$TOPDIR/test/.envs/$env_name"
 
   # Use clean_env for safe removal
   clean_env "$env_name" || return 1
@@ -244,7 +244,7 @@ load_test_env() {
   if [ -z "$TOPDIR" ]; then
     setup_topdir
   fi
-  local env_file="$TOPDIR/.envs/$env_name/.env"
+  local env_file="$TOPDIR/test/.envs/$env_name/.env"
 
   # Auto-create if doesn't exist
   if [ ! -f "$env_file" ]; then
@@ -525,7 +525,7 @@ setup_sequential_test() {
     # Check foundation's own marker, not sequential's copy
     local prereq_complete_marker
     if [ "$immediate_prereq" = "foundation" ]; then
-      prereq_complete_marker="$TOPDIR/.envs/foundation/.bats-state/.foundation-complete"
+      prereq_complete_marker="$TOPDIR/test/.envs/foundation/.bats-state/.foundation-complete"
     else
       prereq_complete_marker="$TEST_DIR/.bats-state/.complete-$immediate_prereq"
     fi
@@ -626,7 +626,7 @@ setup_nonsequential_test() {
 
     # If prerequisites are sequential and ANY already completed, clean to avoid pollution
     if [ "$has_sequential_prereqs" = true ]; then
-      local sequential_state_dir="$TOPDIR/.envs/sequential/.bats-state"
+      local sequential_state_dir="$TOPDIR/test/.envs/sequential/.bats-state"
       if [ -d "$sequential_state_dir" ] && ls "$sequential_state_dir"/.complete-* >/dev/null 2>&1; then
         out "Cleaning sequential environment to avoid pollution from previous test run..."
         # OK to fail: clean_env may fail if environment is locked, but we continue anyway
@@ -636,7 +636,7 @@ setup_nonsequential_test() {
 
     for prereq in "${prereq_tests[@]}"; do
       # Check if prerequisite is already complete
-      local sequential_state_dir="$TOPDIR/.envs/sequential/.bats-state"
+      local sequential_state_dir="$TOPDIR/test/.envs/sequential/.bats-state"
       if [ -f "$sequential_state_dir/.complete-$prereq" ]; then
         debug 3 "Prerequisite $prereq already complete, skipping"
         continue
@@ -662,7 +662,7 @@ setup_nonsequential_test() {
 
     # Copy the sequential TEST_REPO to this non-sequential test's environment
     # THIS IS WHY NON-SEQUENTIAL TESTS DEPEND ON SEQUENTIAL TESTS!
-    local sequential_repo="$TOPDIR/.envs/sequential/repo"
+    local sequential_repo="$TOPDIR/test/.envs/sequential/repo"
     if [ -d "$sequential_repo" ]; then
       out "Copying sequential TEST_REPO to $env_name environment..."
       cp -R "$sequential_repo" "$TEST_DIR/"
@@ -706,7 +706,7 @@ ensure_foundation() {
     error "ensure_foundation: target_dir required"
   fi
 
-  local foundation_dir="$TOPDIR/.envs/foundation"
+  local foundation_dir="$TOPDIR/test/.envs/foundation"
   local foundation_state="$foundation_dir/.bats-state"
   local foundation_complete="$foundation_state/.foundation-complete"
 

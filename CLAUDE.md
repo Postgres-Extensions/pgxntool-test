@@ -98,7 +98,7 @@ Tests use BATS (Bash Automated Testing System) with semantic assertions that che
 
 ### Test Environment Setup
 
-Tests create isolated environments in `.envs/` directory:
+Tests create isolated environments in `test/.envs/` directory:
 - **Sequential environment**: Shared by 01-05 tests, built incrementally
 - **Non-sequential environments**: Fresh copies for test-make-test, test-make-results, test-doc
 
@@ -121,7 +121,7 @@ Tests are organized by filename patterns:
 **Sequential Tests (Pattern: `[0-9][0-9]-*.bats`):**
 - Run in numeric order, each building on previous test's work
 - Examples: 00-validate-tests, 01-meta, 02-dist, 03-setup-final
-- Share state in `.envs/sequential/` environment
+- Share state in `test/.envs/sequential/` environment
 
 **Independent Tests (Pattern: `test-*.bats`):**
 - Each gets its own isolated environment
@@ -150,7 +150,7 @@ test/bats/bin/bats tests/03-setup-final.bats
 
 ### CRITICAL: Test Environment Isolation
 
-**DO NOT run tests in parallel!** Test runs share the same `.envs/` directory and will clobber each other.
+**DO NOT run tests in parallel!** Test runs share the same `test/.envs/` directory and will clobber each other.
 
 **Examples of what NOT to do:**
 - Running `make test` while a test agent is running tests
@@ -158,7 +158,7 @@ test/bats/bin/bats tests/03-setup-final.bats
 - Having the main thread run tests while a subagent is also running tests
 
 **Why this matters:**
-- Tests create and modify shared state in `.envs/sequential/`, `.envs/foundation/`, etc.
+- Tests create and modify shared state in `test/.envs/sequential/`, `test/.envs/foundation/`, etc.
 - Parallel test runs will corrupt each other's environments
 - Results will be unpredictable and incorrect
 
