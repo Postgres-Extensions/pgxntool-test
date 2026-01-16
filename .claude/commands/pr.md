@@ -33,6 +33,12 @@ Create pull requests for pgxntool and pgxntool-test changes, following the two-r
 
 **Key principle:** Be specific about outcomes. Avoid vague claims.
 
+**CRITICAL: Item Ordering**
+- Order all items (sections, bullet points, changes) by **decreasing importance**
+- Importance = impact of the change × likelihood someone reading history will care
+- Most impactful/interesting changes first, minor details last
+- Think: "What would I want to see first when reviewing this PR?"
+
 **Examples:**
 - Good: "test-extra runs full test suite across multiple pg_tle versions"
 - Bad: "comprehensive testing support"

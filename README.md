@@ -2,6 +2,18 @@
 
 Test harness for [pgxntool](https://github.com/decibel/pgxntool), a PostgreSQL extension build framework.
 
+## Repository Structure
+
+**IMPORTANT**: This repository must be cloned in the same directory as pgxntool, so that `../pgxntool` exists. The test harness expects this directory layout:
+
+```
+parent-directory/
+├── pgxntool/          # The framework being tested
+└── pgxntool-test/     # This repository (test harness)
+```
+
+The tests use relative paths to access pgxntool, so maintaining this structure is required.
+
 ## Requirements
 
 - PostgreSQL with development headers

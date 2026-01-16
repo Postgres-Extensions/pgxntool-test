@@ -55,13 +55,19 @@ cd ../pgxntool-test && git status
 
 3. Analyze changes in BOTH repositories and draft commit messages for BOTH:
 
+   **CRITICAL: Item Ordering**
+   - Order all items (changes, bullet points) by **decreasing importance**
+   - Importance = impact of the change × likelihood someone reading history will care
+   - Most impactful/interesting changes first, minor details last
+   - Think: "What would I want to see first when reading this in git log 2 years from now?"
+
    For pgxntool:
    - Analyze: `git status`, `git diff --stat`, `git log -10 --oneline`
    - Draft message with structure:
      ```
      Subject line
 
-     [Main changes in pgxntool...]
+     [Main changes in pgxntool, ordered by decreasing importance...]
 
      Related changes in pgxntool-test:
      - [RELEVANT test change 1]
@@ -85,7 +91,7 @@ cd ../pgxntool-test && git status
      - [Key pgxntool change 1]
      - [Key pgxntool change 2]
 
-     [pgxntool-test specific changes...]
+     [pgxntool-test specific changes, ordered by decreasing importance...]
 
      Co-Authored-By: Claude <noreply@anthropic.com>
      ```

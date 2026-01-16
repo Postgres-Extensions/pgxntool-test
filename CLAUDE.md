@@ -4,6 +4,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Git Commit Guidelines
 
+**CRITICAL**: Never attempt to commit changes on your own initiative. Always wait for explicit user instruction to commit. Even if you detect issues (like out-of-date files), inform the user and let them decide when to commit.
+
 **IMPORTANT**: When creating commit messages, do not attribute commits to yourself (Claude). Commit messages should reflect the work being done without AI attribution in the message body. The standard Co-Authored-By trailer is acceptable.
 
 ## Using Subagents
@@ -24,23 +26,9 @@ These subagents are already available in your context - you don't need to discov
 
 **At the start of every session**: Invoke the pgtle subagent to check if there are any newer versions of pg_tle than what it has already analyzed. If new versions exist, the subagent should analyze them for API changes and update its knowledge of version boundaries.
 
-## Startup Verification
+## Claude Commands
 
-**CRITICAL**: Every time you start working in this repository, verify that `.claude/commands/commit.md` is a valid symlink:
-
-```bash
-# Check if symlink exists and points to pgxntool
-ls -la .claude/commands/commit.md
-
-# Should show: commit.md -> ../../../pgxntool/.claude/commands/commit.md
-
-# Verify the target file exists and is readable
-test -f .claude/commands/commit.md && echo "Symlink is valid" || echo "ERROR: Symlink broken!"
-```
-
-**Why this matters**: `commit.md` is shared between pgxntool-test and pgxntool repos (lives in pgxntool, symlinked from here). Both repos are always checked out together. If the symlink is broken, the `/commit` command won't work.
-
-**If symlink is broken**: Stop and inform the user immediately - don't attempt to fix it yourself.
+The `/commit` Claude Command lives in this repository (`.claude/commands/commit.md`). pgxntool no longer has its own copy.
 
 ## What This Repo Is
 

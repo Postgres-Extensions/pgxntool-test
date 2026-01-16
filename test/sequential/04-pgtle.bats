@@ -52,17 +52,24 @@ teardown_file() {
   [ -f "pg_tle/1.5.0+/pgxntool-test.sql" ]
 }
 
-@test "pgtle: PGTLE_VERSION limits output to specific version" {
-  make clean
-  make pgtle PGTLE_VERSION=1.5.0+
+@test "pgtle: --pgtle-version limits output to specific version" {
+  # Note: The Makefile always generates all versions. This test verifies
+  # that the script's --pgtle-version flag works correctly when called directly.
+  run rm -rf pg_tle
+  assert_success
+
+  run "$TEST_REPO/pgxntool/pgtle.sh" --extension pgxntool-test --pgtle-version 1.5.0+
+  assert_success
+
   [ -f "pg_tle/1.5.0+/pgxntool-test.sql" ]
   [ ! -f "pg_tle/1.0.0-1.4.0/pgxntool-test.sql" ]
   [ ! -f "pg_tle/1.4.0-1.5.0/pgxntool-test.sql" ]
 }
 
 @test "pgtle: 1.0.0-1.4.0 file does not have schema parameter" {
-  # Test 4 cleaned, so regenerate all files
-  make pgtle
+  # Previous test only generated 1.5.0+, so regenerate all files
+  run make pgtle
+  assert_success
   # Verify install_extension calls do NOT have schema parameter
   # Count install_extension calls
   local count=$(grep -c "pgtle.install_extension" pg_tle/1.0.0-1.4.0/pgxntool-test.sql || echo "0")
