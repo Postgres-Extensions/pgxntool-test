@@ -17,42 +17,18 @@ The tests use relative paths to access pgxntool, so maintaining this structure i
 ## Requirements
 
 - PostgreSQL with development headers
-- [BATS (Bash Automated Testing System)](https://github.com/bats-core/bats-core)
 - rsync
 - asciidoctor (for documentation tests)
 
+BATS (Bash Automated Testing System) is included as a git submodule at `test/bats/`.
+
 ### PostgreSQL Configuration
 
-**IMPORTANT**: Tests that require PostgreSQL assume that you have configured your environment so that a plain `psql` command works. This means you should set the appropriate PostgreSQL environment variables:
+Tests that require PostgreSQL assume a plain `psql` command works. Set the appropriate environment variables:
 
-- `PGHOST` - PostgreSQL server host (default: localhost or Unix socket)
-- `PGPORT` - PostgreSQL server port (default: 5432)
-- `PGUSER` - PostgreSQL user (default: current system user)
-- `PGDATABASE` - Default database (default: same as PGUSER)
-- `PGPASSWORD` - Password (if required, or use `.pgpass` file)
+- `PGHOST`, `PGPORT`, `PGUSER`, `PGDATABASE`, `PGPASSWORD` (or use `~/.pgpass`)
 
-If these are not set, `psql` will use its defaults (typically connecting via Unix socket to a database matching your username). Tests will skip if PostgreSQL is not accessible.
-
-**Example setup**:
-```bash
-export PGHOST=localhost
-export PGPORT=5432
-export PGUSER=postgres
-export PGDATABASE=postgres
-export PGPASSWORD=mypassword  # Or use ~/.pgpass
-```
-
-### Installing BATS
-
-```bash
-# macOS
-brew install bats-core
-
-# Linux (via git)
-git clone https://github.com/bats-core/bats-core.git
-cd bats-core
-sudo ./install.sh /usr/local
-```
+If not set, `psql` uses defaults (Unix socket, database matching username). Tests skip if PostgreSQL is not accessible.
 
 ## Running Tests
 
@@ -92,8 +68,8 @@ This catches infrastructure bugs early - if test-recursion fails, you know the t
 ## How Tests Work
 
 This test harness validates pgxntool by:
-1. Cloning pgxntool-test-template (a minimal PostgreSQL extension)
-2. Injecting pgxntool into it via git subtree
+1. Creating a fresh git repo with extension files from `template/`
+2. Adding pgxntool via git subtree
 3. Running various pgxntool operations (setup, build, test, dist)
 4. Validating the results
 
@@ -104,7 +80,7 @@ See [CLAUDE.md](CLAUDE.md) for detailed documentation.
 Tests are organized by filename pattern:
 
 **Foundation Layer:**
-- **foundation.bats** - Creates base TEST_REPO (clone + setup.sh + template files)
+- **foundation.bats** - Creates base TEST_REPO (git init + template files + pgxntool subtree + setup.sh)
 - Run automatically by other tests, not directly
 
 **Sequential Tests (Pattern: `[0-9][0-9]-*.bats`):**
