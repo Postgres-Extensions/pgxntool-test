@@ -163,9 +163,6 @@ PGXNREPO=`find_repo $PGXNREPO`
 TEST_TEMPLATE=`find_repo $TEST_TEMPLATE`
 debug_vars 19 PG_LOCATION PGXNREPO TEST_REPO
 
-# Force use of a fake asciidoc. This is much easier than dealing with the variability of whatever asciidoc may or may not exist in the path.
-ASCIIDOC=$TOP_DIR/fake_asciidoc
-
 redirect
 
 #trap "echo PTD='$TEST_DIR' >&2; echo LOG='$LOG' >&2" EXIT

@@ -136,10 +136,10 @@ endif
 # IS AN ERROR and needs to ALWAYS be treated as such.
 .PHONY: check-readme
 check-readme:
-	@# Check if source files exist
-	@if [ ! -f "$(PGXNTOOL_SOURCE_DIR)/README.asc" ] || [ ! -f "$(PGXNTOOL_SOURCE_DIR)/README.html" ]; then \
-		echo "WARNING: README.asc or README.html not found, skipping check" >&2; \
-		exit 0; \
+	@# Check if source file exists
+	@if [ ! -f "$(PGXNTOOL_SOURCE_DIR)/README.asc" ]; then \
+		echo "ERROR: README.asc not found at $(PGXNTOOL_SOURCE_DIR)/README.asc" >&2; \
+		exit 1; \
 	fi
 	@# Check if README.html is out of date (BEFORE rebuilding)
 	@OUT_OF_DATE=0; \
