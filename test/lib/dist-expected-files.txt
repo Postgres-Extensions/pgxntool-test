@@ -35,6 +35,7 @@ doc/other.html
 sql/
 sql/pgxntool-test--0.1.0.sql
 sql/pgxntool-test--0.1.0--0.1.1.sql
+sql/pgxntool-test--0.1.1.sql
 sql/pgxntool-test.sql
 
 # Test files (root level, copied from t/)
@@ -56,6 +57,7 @@ pgxntool/LICENSE
 pgxntool/lib.sh
 pgxntool/make_results.sh
 pgxntool/META.in.json
+pgxntool/control.mk.sh
 pgxntool/meta.mk.sh
 pgxntool/pgtle.sh
 pgxntool/safesed

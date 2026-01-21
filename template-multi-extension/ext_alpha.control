@@ -1,0 +1,3 @@
+comment = 'Alpha extension for multi-extension testing'
+default_version = '1.0.0'
+requires = 'plpgsql'

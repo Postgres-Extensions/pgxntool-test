@@ -60,6 +60,53 @@ teardown_file() {
   [ "$status" -eq 0 ]
 }
 
+@test "make distclean removes generated files" {
+  # Verify that distclean properly removes generated build artifacts
+  # so we can test that make rebuilds them correctly
+  run make distclean
+  assert_success
+
+  # Generated files should be removed
+  [ ! -f "META.json" ]
+  [ ! -f "meta.mk" ]
+  [ ! -f "control.mk" ]
+}
+
+@test "make after distclean generates versioned SQL files" {
+  # This test verifies that 'make' (without arguments) runs the 'all' target
+  # and generates versioned SQL files, not just META.json.
+  #
+  # This is critical because:
+  # 1. The 'all' target depends on $(EXTENSION_VERSION_FILES) - versioned SQL like sql/ext--1.0.sql
+  # 2. These versioned SQL files are required for PostgreSQL to load the extension
+  # 3. If 'make' only generated META.json, the extension would be unusable
+
+  # Run make (default target should be 'all')
+  run make
+  assert_success
+
+  # META.json should be regenerated (this was always true)
+  assert_file_exists "META.json"
+
+  # Verify versioned SQL files were generated (proves 'all' target ran)
+  # The control file specifies default_version = '0.1.1', so we expect:
+  # - sql/pgxntool-test--0.1.1.sql (auto-generated from sql/pgxntool-test.sql)
+  #
+  # Note: The version comes from the .control file, NOT META.json.
+  # control.mk.sh reads the control file to generate the versioned filename.
+  local control_file=$(ls *.control 2>/dev/null | head -1)
+  local ext_name="${control_file%.control}"
+  local version=$(grep -E "^[[:space:]]*default_version" "$control_file" | sed "s/.*=[[:space:]]*['\"]\\([^'\"]*\\)['\"].*/\\1/")
+
+  # The versioned SQL file should exist
+  local versioned_sql="sql/${ext_name}--${version}.sql"
+  assert_file_exists "$versioned_sql"
+
+  # Verify it has the auto-generated header (proves it was actually generated, not just copied)
+  run grep -q "DO NOT EDIT - AUTO-GENERATED FILE" "$versioned_sql"
+  assert_success
+}
+
 @test "make html succeeds" {
   # Build documentation before dist. This is actually redundant since make dist
   # depends on html, but we test it explicitly to verify the workflow.

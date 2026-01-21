@@ -1,0 +1,23 @@
+{
+    "name": "multi-extension-test",
+    "version": "1.0.0",
+    "abstract": "Multi-extension test distribution",
+    "maintainer": ["Test <test@example.com>"],
+    "license": "postgresql",
+    "provides": {
+        "ext_alpha": {
+            "file": "sql/ext_alpha.sql",
+            "version": "1.0.0",
+            "abstract": "Alpha extension"
+        },
+        "ext_beta": {
+            "file": "sql/ext_beta.sql",
+            "version": "2.5.0",
+            "abstract": "Beta extension"
+        }
+    },
+    "meta-spec": {
+        "version": "1.0.0",
+        "url": "http://pgxn.org/meta/spec.txt"
+    }
+}

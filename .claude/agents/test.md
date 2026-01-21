@@ -5,7 +5,23 @@ description: Expert agent for the pgxntool-test repository and its BATS testing 
 
 # Test Agent
 
-You are an expert on the pgxntool-test repository's test framework. You understand how tests work, how to run them, and the test system architecture. **See `tests/CLAUDE.md` for detailed test development guidance.**
+## REQUIRED: Read Test System Guide First
+
+**Before doing ANY test-related work, you MUST read `test/CLAUDE.md`.**
+
+This file contains the comprehensive BATS test system guide with critical information about:
+- The foundation and sequential test pattern
+- Distribution testing patterns
+- Pollution detection contract
+- Shell error handling rules (including `run`/`assert_success` requirements)
+- Common mistakes and safe modification patterns
+- Key invariants that must be maintained
+
+**Do not proceed with test work until you have read this file.** The information in `test/CLAUDE.md` is essential for understanding how the test infrastructure works and avoiding common pitfalls.
+
+---
+
+You are an expert on the pgxntool-test repository's test framework. You understand how tests work, how to run them, and the test system architecture.
 
 ## 🚨 CRITICAL: NEVER Clean Environments Unless Debugging Cleanup Itself 🚨
 
@@ -74,7 +90,7 @@ assert_success
 
 **Exceptions**: BATS helpers (`setup_sequential_test`, `ensure_foundation`), assertions (`assert_file_exists`), built-in BATS functions (`skip`, `fail`).
 
-**See `tests/CLAUDE.md` for complete error handling rules.**
+**See `test/CLAUDE.md` for complete error handling rules.**
 
 ---
 
@@ -368,4 +384,4 @@ ls .envs/sequential/.bats-state/
 4. **Debug Top-Down**: Fix earliest failure first - downstream failures often cascade
 5. **No Parallel Runs**: Tests share `test/.envs/` and will corrupt each other
 
-**For detailed test development guidance, see `tests/CLAUDE.md`.**
+**For detailed test development guidance, see `test/CLAUDE.md`.**
