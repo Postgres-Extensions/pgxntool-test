@@ -1225,4 +1225,181 @@ ensure_pgtle_extension() {
   return 0
 }
 
+# ============================================================================
+# Custom Template Repository Building
+# ============================================================================
+
+# Build a test repository from a custom template
+#
+# This function creates a fully set up test repository from a template directory,
+# similar to what foundation.bats does but with a custom template. It handles:
+# 1. Creating TEST_REPO directory
+# 2. Initializing git
+# 3. Copying template files
+# 4. Committing template files
+# 5. Configuring fake remote
+# 6. Adding pgxntool (via subtree or rsync if dirty)
+# 7. Running setup.sh
+# 8. Committing setup changes
+#
+# Usage:
+#   build_test_repo_from_template "$template_dir"
+#
+# Arguments:
+#   template_dir: Path to the template directory to copy from
+#
+# Prerequisites:
+#   - TOPDIR must be set (call setup_topdir() first)
+#   - TEST_DIR and TEST_REPO must be set (call load_test_env() first)
+#   - PGXNREPO and PGXNBRANCH must be set (done by load_test_env via setup_pgxntool_vars)
+#
+# Returns:
+#   0 on success, 1 on failure
+#
+# After calling this function, TEST_REPO will be a fully initialized repository
+# with pgxntool added and setup.sh run, ready for testing.
+#
+# Example:
+#   setup_file() {
+#     setup_topdir
+#     load_test_env "my-test"
+#     build_test_repo_from_template "${TOPDIR}/my-custom-template"
+#   }
+build_test_repo_from_template() {
+  local template_dir="$1"
+
+  if [ -z "$template_dir" ]; then
+    error "build_test_repo_from_template: template_dir required"
+  fi
+
+  if [ ! -d "$template_dir" ]; then
+    error "build_test_repo_from_template: template directory does not exist: $template_dir"
+  fi
+
+  # Validate prerequisites
+  if [ -z "$TOPDIR" ]; then
+    error "build_test_repo_from_template: TOPDIR not set (call setup_topdir first)"
+  fi
+  if [ -z "$TEST_DIR" ]; then
+    error "build_test_repo_from_template: TEST_DIR not set (call load_test_env first)"
+  fi
+  if [ -z "$TEST_REPO" ]; then
+    error "build_test_repo_from_template: TEST_REPO not set (call load_test_env first)"
+  fi
+  if [ -z "$PGXNREPO" ]; then
+    error "build_test_repo_from_template: PGXNREPO not set"
+  fi
+  if [ -z "$PGXNBRANCH" ]; then
+    error "build_test_repo_from_template: PGXNBRANCH not set"
+  fi
+
+  debug 2 "build_test_repo_from_template: Building from $template_dir"
+
+  # Step 1: Create TEST_REPO directory
+  if [ -d "$TEST_REPO" ]; then
+    error "build_test_repo_from_template: TEST_REPO already exists: $TEST_REPO"
+  fi
+  mkdir "$TEST_REPO" || {
+    error "build_test_repo_from_template: Failed to create TEST_REPO"
+  }
+
+  # Step 2: Initialize git repository
+  (cd "$TEST_REPO" && git init) || {
+    error "build_test_repo_from_template: git init failed"
+  }
+
+  # Step 3: Copy template files
+  rsync -a --exclude='.DS_Store' "$template_dir"/ "$TEST_REPO"/ || {
+    error "build_test_repo_from_template: Failed to copy template files"
+  }
+
+  # Step 4: Commit template files
+  (cd "$TEST_REPO" && git add . && git commit -m "Initial extension files from template") || {
+    error "build_test_repo_from_template: Failed to commit template files"
+  }
+
+  # Step 5: Configure fake remote
+  git init --bare "${TEST_DIR}/fake_repo" >/dev/null 2>&1 || {
+    error "build_test_repo_from_template: Failed to create fake remote"
+  }
+  (cd "$TEST_REPO" && git remote add origin "${TEST_DIR}/fake_repo") || {
+    error "build_test_repo_from_template: Failed to add origin remote"
+  }
+  local current_branch
+  current_branch=$(cd "$TEST_REPO" && git symbolic-ref --short HEAD)
+  (cd "$TEST_REPO" && git push --set-upstream origin "$current_branch") || {
+    error "build_test_repo_from_template: Failed to push to fake remote"
+  }
+
+  # Step 6: Add pgxntool
+  # Wait for filesystem timestamp granularity
+  sleep 1
+  (cd "$TEST_REPO" && git update-index --refresh) || {
+    error "build_test_repo_from_template: git update-index failed"
+  }
+
+  # Check if pgxntool repo is dirty
+  local source_is_dirty=0
+  if [ -d "$PGXNREPO/.git" ]; then
+    if [ -n "$(cd "$PGXNREPO" && git status --porcelain)" ]; then
+      source_is_dirty=1
+      local pgxn_branch
+      pgxn_branch=$(cd "$PGXNREPO" && git symbolic-ref --short HEAD)
+
+      if [ "$pgxn_branch" != "$PGXNBRANCH" ]; then
+        error "build_test_repo_from_template: Source repo is dirty but on wrong branch ($pgxn_branch, expected $PGXNBRANCH)"
+      fi
+
+      out "Source repo is dirty and on correct branch, using rsync instead of git subtree"
+
+      mkdir "$TEST_REPO/pgxntool" || {
+        error "build_test_repo_from_template: Failed to create pgxntool directory"
+      }
+      rsync -a "$PGXNREPO/" "$TEST_REPO/pgxntool/" --exclude=.git || {
+        error "build_test_repo_from_template: Failed to rsync pgxntool"
+      }
+      (cd "$TEST_REPO" && git add --all && git commit -m "Committing unsaved pgxntool changes") || {
+        error "build_test_repo_from_template: Failed to commit pgxntool files"
+      }
+    fi
+  fi
+
+  # If source wasn't dirty, use git subtree
+  if [ $source_is_dirty -eq 0 ]; then
+    (cd "$TEST_REPO" && git subtree add -P pgxntool --squash "$PGXNREPO" "$PGXNBRANCH") || {
+      error "build_test_repo_from_template: git subtree add failed"
+    }
+  fi
+
+  # Verify pgxntool was added
+  if [ ! -f "$TEST_REPO/pgxntool/base.mk" ]; then
+    error "build_test_repo_from_template: pgxntool/base.mk not found after adding pgxntool"
+  fi
+
+  # Step 7: Run setup.sh
+  # Verify repo is clean first
+  local porcelain_output
+  porcelain_output=$(cd "$TEST_REPO" && git status --porcelain)
+  if [ -n "$porcelain_output" ]; then
+    error "build_test_repo_from_template: Repository is dirty before setup.sh"
+  fi
+
+  (cd "$TEST_REPO" && ./pgxntool/setup.sh) || {
+    error "build_test_repo_from_template: setup.sh failed"
+  }
+
+  # Verify Makefile was created
+  if [ ! -f "$TEST_REPO/Makefile" ]; then
+    error "build_test_repo_from_template: Makefile not created by setup.sh"
+  fi
+
+  # Step 8: Commit setup changes
+  (cd "$TEST_REPO" && git commit -am "Add pgxntool setup") || {
+    error "build_test_repo_from_template: Failed to commit setup changes"
+  }
+
+  debug 2 "build_test_repo_from_template: Successfully built repository"
+  return 0
+}
+
 # vi: expandtab sw=2 ts=2
