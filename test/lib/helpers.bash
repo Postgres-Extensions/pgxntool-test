@@ -182,8 +182,79 @@ debug_vars() {
   debug "$level" "$output"
 }
 
+# Check that pgxntool-test and pgxntool are on the same branch
+# This prevents confusing test failures when someone commits to the wrong branch
+# Must be called after TOPDIR is set
+check_branch_alignment() {
+  # Skip if PGXNBRANCH is explicitly set (user knows what they're doing)
+  if [ -n "${PGXNBRANCH:-}" ]; then
+    debug 3 "check_branch_alignment: PGXNBRANCH explicitly set to '$PGXNBRANCH', skipping check"
+    return 0
+  fi
+
+  # Get pgxntool-test's current branch
+  local test_harness_branch
+  test_harness_branch=$(git -C "$TOPDIR" symbolic-ref --short HEAD 2>/dev/null || echo "")
+  if [ -z "$test_harness_branch" ]; then
+    debug 3 "check_branch_alignment: pgxntool-test not on a branch (detached HEAD?), skipping check"
+    return 0
+  fi
+
+  # Get pgxntool's path
+  local pgxnrepo_path="${PGXNREPO:-${TOPDIR}/../pgxntool}"
+
+  # Only check for local repos
+  if ! local_repo "$pgxnrepo_path"; then
+    debug 3 "check_branch_alignment: pgxntool is remote, skipping check"
+    return 0
+  fi
+
+  # Get pgxntool's current branch
+  local pgxntool_branch
+  pgxntool_branch=$(git -C "$pgxnrepo_path" symbolic-ref --short HEAD 2>/dev/null || echo "")
+  if [ -z "$pgxntool_branch" ]; then
+    debug 3 "check_branch_alignment: pgxntool not on a branch (detached HEAD?), skipping check"
+    return 0
+  fi
+
+  debug 3 "check_branch_alignment: pgxntool-test='$test_harness_branch', pgxntool='$pgxntool_branch'"
+
+  # Check for mismatch
+  if [ "$test_harness_branch" != "$pgxntool_branch" ]; then
+    out
+    out "=========================================================================="
+    out "ERROR: Branch mismatch detected!"
+    out
+    out "  pgxntool-test is on branch: $test_harness_branch"
+    out "  pgxntool is on branch:      $pgxntool_branch"
+    out
+    out "This usually happens when you commit to the wrong branch in pgxntool."
+    out "Tests will fail confusingly because they pull from the wrong branch."
+    out
+    out "To fix:"
+    out "  1. Switch pgxntool to the correct branch:"
+    out "     cd $(cd "$pgxnrepo_path" && pwd) && git checkout $test_harness_branch"
+    out
+    out "  2. Or switch pgxntool-test to match pgxntool:"
+    out "     cd $TOPDIR && git checkout $pgxntool_branch"
+    out
+    out "  3. Or set PGXNBRANCH explicitly to override:"
+    out "     PGXNBRANCH=$pgxntool_branch make test"
+    out "=========================================================================="
+    out
+    return 1
+  fi
+
+  debug 2 "check_branch_alignment: Both repos on '$test_harness_branch', OK"
+  return 0
+}
+
 # Setup pgxntool-related variables
 setup_pgxntool_vars() {
+  # FIRST: Check branch alignment before any other setup
+  # This catches the common error of committing to wrong branch early
+  check_branch_alignment || return 1
+
   # Smart branch detection: if pgxntool-test is on a non-master branch,
   # automatically use the same branch from pgxntool if it exists
   if [ -z "$PGXNBRANCH" ]; then
@@ -205,7 +276,8 @@ setup_pgxntool_vars() {
         if [ "$PGXNTOOL_BRANCH" = "master" ] || [ "$PGXNTOOL_BRANCH" = "$TEST_HARNESS_BRANCH" ]; then
           PGXNBRANCH="$PGXNTOOL_BRANCH"
         else
-          # Different branches - use master as safe fallback
+          # Different branches - this should have been caught by check_branch_alignment
+          # but we keep the warning for safety
           out "WARNING: pgxntool-test is on '$TEST_HARNESS_BRANCH' but pgxntool is on '$PGXNTOOL_BRANCH'"
           out "Using 'master' branch. Set PGXNBRANCH explicitly to override."
           PGXNBRANCH="master"

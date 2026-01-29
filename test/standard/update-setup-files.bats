@@ -17,11 +17,17 @@ setup_file() {
   setup_topdir
   load_test_env "update-setup-files"
   ensure_foundation "$TEST_DIR"
+  # Save initial commit for resetting between tests
+  cd "$TEST_REPO"
+  export INITIAL_COMMIT=$(git rev-parse HEAD)
 }
 
 setup() {
   load_test_env "update-setup-files"
   cd "$TEST_REPO"
+  # Reset to initial state to prevent test pollution
+  git reset --hard "$INITIAL_COMMIT" >/dev/null 2>&1
+  git clean -fd >/dev/null 2>&1
 }
 
 # =============================================================================
@@ -51,6 +57,14 @@ setup() {
 # =============================================================================
 
 @test "auto-update when user has not modified file" {
+  # First, ensure .gitignore matches the template exactly
+  # (Foundation may have modified it, e.g., added *.html for docs)
+  cp pgxntool/_.gitignore .gitignore
+  run git add .gitignore
+  assert_success
+  run git commit -m "Reset .gitignore to match template"
+  assert_success
+
   local old_commit=$(git log -1 --format=%H -- pgxntool/)
 
   # Modify pgxntool template
@@ -65,7 +79,7 @@ setup() {
   assert_success
 
   # Verify file was auto-updated
-  assert_output --partial "updated"
+  assert_contains "$output" "updated"
   grep -q "# pgxntool new feature" .gitignore
 }
 
@@ -98,7 +112,7 @@ setup() {
   assert_success
 
   # Verify both changes present (clean merge)
-  assert_output --partial "merged cleanly"
+  assert_contains "$output" "merged cleanly"
   grep -q "# pgxntool new header" .gitignore
   grep -q "# user customization at end" .gitignore
 
@@ -137,7 +151,7 @@ setup() {
   assert_success  # Script succeeds but reports conflicts
 
   # Verify conflict markers present
-  assert_output --partial "CONFLICTS"
+  assert_contains "$output" "CONFLICTS"
   grep -q "<<<<<<" .gitignore
   grep -q ">>>>>>" .gitignore
 }
@@ -161,7 +175,7 @@ setup() {
   assert_success
 
   # Verify file was created
-  assert_output --partial "creating"
+  assert_contains "$output" "creating"
   [ -f .gitignore ]
 }
 
@@ -193,8 +207,8 @@ setup() {
   assert_success  # Script doesn't fail, just warns
 
   # Should report wrong target
-  assert_output --partial "symlink points to"
-  assert_output --partial "wrong/target"
+  assert_contains "$output" "symlink points to"
+  assert_contains "$output" "wrong/target"
 }
 
 @test "missing symlink is created" {
@@ -207,7 +221,7 @@ setup() {
   assert_success
 
   # Verify symlink was created
-  assert_output --partial "creating symlink"
+  assert_contains "$output" "creating symlink"
   [ -L test/pgxntool ]
 }
 

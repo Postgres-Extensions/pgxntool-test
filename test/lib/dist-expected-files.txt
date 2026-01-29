@@ -62,6 +62,7 @@ pgxntool/meta.mk.sh
 pgxntool/pgtle.sh
 pgxntool/safesed
 pgxntool/setup.sh
+pgxntool/update-setup-files.sh
 pgxntool/WHAT_IS_THIS
 
 # pgxntool test infrastructure
