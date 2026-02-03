@@ -1,6 +1,6 @@
 ---
 description: Create a git commit following project standards and safety protocols
-allowed-tools: Bash(git status:*), Bash(git log:*), Bash(git add:*), Bash(git diff:*), Bash(git commit:*), Bash(make test:*)
+allowed-tools: Bash(git status:*), Bash(git log:*), Bash(git add:*), Bash(git diff:*), Bash(git commit:*), Bash(make test:*), Read, Edit
 ---
 
 # commit
@@ -22,6 +22,11 @@ Create a git commit following all project standards and safety protocols for pgx
    - There is NO such thing as an "acceptable" failing test
    - Do NOT rationalize failures as "pre-existing" or "unrelated"
 
+5. **HISTORY.asc Updates**: For significant, user-visible changes in pgxntool, HISTORY.asc must be updated:
+   - Propose an entry and ask for confirmation
+   - Updates go in the STABLE section at the TOP of the file
+   - If no STABLE section exists, create one
+
 **WORKFLOW:**
 
 1. **Launch test subagent** (unless user explicitly says not to):
@@ -32,7 +37,24 @@ Create a git commit following all project standards and safety protocols for pgx
 2. **While tests run**, gather information in parallel:
    - `git status`, `git diff --stat`, `git log -10 --oneline` for both repos
 
-3. **Analyze changes** in BOTH repositories and draft commit messages for BOTH:
+3. **Check if HISTORY.asc needs updating** (for pgxntool changes only):
+   - Read `../pgxntool/HISTORY.asc`
+   - Determine if changes are significant and user-visible:
+     * ✅ New features, new commands, behavior changes, bug fixes users would notice
+     * ❌ Internal refactoring, test changes, code cleanup, documentation fixes
+   - If update needed, propose an entry in AsciiDoc format (use `==` for heading)
+   - Present proposed entry and ask for confirmation BEFORE proceeding
+   - If confirmed, add entry to STABLE section (create section if missing):
+     ```
+     STABLE
+     ------
+     == [Entry heading]
+     [Entry description]
+
+     [existing content...]
+     ```
+
+4. **Analyze changes** in BOTH repositories and draft commit messages for BOTH:
 
    **CRITICAL: Item Ordering**
    - Order all items (changes, bullet points) by **decreasing importance**
@@ -82,7 +104,7 @@ Create a git commit following all project standards and safety protocols for pgx
    Skip the repo with no changes. In the commit message for the repo that has changes,
    add: "Changes only in [repo]. No related changes in [other repo]." before Co-Authored-By.
 
-4. **PRESENT both proposed commit messages to the user and WAIT for approval**
+5. **PRESENT both proposed commit messages to the user and WAIT for approval**
 
    Show both messages:
    ```
@@ -97,7 +119,7 @@ Create a git commit following all project standards and safety protocols for pgx
 
    **Note:** If only one repo has changes, show only that message (with note about other repo).
 
-5. **Wait for tests to complete** - THIS IS MANDATORY:
+6. **Wait for tests to complete** - THIS IS MANDATORY:
    - Check test subagent output for completion
    - Verify ALL tests passed (no "not ok" lines)
    - **If ANY tests fail: STOP. Do NOT commit. Ask the user what to do.**
@@ -105,7 +127,7 @@ Create a git commit following all project standards and safety protocols for pgx
    - Do NOT rationalize failures as "pre-existing" or "unrelated"
    - Only proceed to commit if ALL tests pass
 
-6. **After tests pass AND receiving approval, execute two-phase commit:**
+7. **After tests pass AND receiving approval, execute two-phase commit:**
 
    **Phase 1: Commit pgxntool**
 
