@@ -55,50 +55,36 @@ setup() {
   # Query all available versions
   local versions
   versions=$(psql -X -tAc "SELECT version FROM pg_available_extension_versions WHERE name = 'pg_tle' ORDER BY version;" 2>/dev/null || echo)
-  
+
   if [ -z "$versions" ]; then
     skip "No pg_tle versions available for testing"
   fi
-  
-  # Process each version
+
+  # Run full pgtle-install test suite for each version
+  # Uses PGTLE_TARGET_VERSION env var to control which version is tested
+  local bats_cmd="${TOPDIR}/test/bats/bin/bats"
+  local pgtle_tests="${TOPDIR}/test/standard/pgtle-install.bats"
+
   while IFS= read -r version; do
     [ -z "$version" ] && continue
 
-    out -f "Testing with pg_tle version: $version"
+    out -f "Running pgtle-install tests with pg_tle version: $version"
 
-    # Ensure pg_tle extension is at the requested version
-    # This must succeed - we're testing known available versions
-    if ! ensure_pgtle_extension "$version"; then
-      error "Failed to install pg_tle version $version: $PGTLE_EXTENSION_ERROR"
-    fi
-    
-    # Run make check-pgtle (should report the version we just created)
-    run make check-pgtle
-    assert_success
-    assert_contains "$output" "$version"
-    
-    # Run make run-pgtle (should auto-detect version and use correct files)
-    run make run-pgtle
-    assert_success "Failed to install pg_tle registration at version $version"
-    
-    # Run SQL tests (in a transaction that doesn't commit)
-    local sql_file="${BATS_TEST_DIRNAME}/pgtle-versions.sql"
-    run psql -X -v ON_ERROR_STOP=1 -f "$sql_file" 2>&1
+    # Clean up before each version test
+    psql -X -c "DROP EXTENSION IF EXISTS \"pgxntool-test\";" >/dev/null 2>&1 || true
+    psql -X -c "SELECT pgtle.uninstall_extension('pgxntool-test');" >/dev/null 2>&1 || true
+    psql -X -c "DROP EXTENSION IF EXISTS pg_tle CASCADE;" >/dev/null 2>&1 || true
+
+    # Run pgtle-install.bats with target version
+    # The tests will use ensure_pgtle_extension to install this version
+    run env PGTLE_TARGET_VERSION="$version" "$bats_cmd" "$pgtle_tests"
     if [ "$status" -ne 0 ]; then
-      out -f "psql command failed with exit status $status"
-      out -f "SQL file: $sql_file"
-      out -f "pg_tle version: $version"
+      out -f "pgtle-install tests failed for pg_tle version $version"
       out -f "Output:"
       out -f "$output"
     fi
-    assert_success "SQL tests failed for pg_tle version $version"
-    
-    # pgTap output should contain test results
-    assert_contains "$output" "1.."
-    
-    # Clean up extension registration for next iteration
-    psql -X -c "DROP EXTENSION IF EXISTS \"pgxntool-test\";" >/dev/null 2>&1 || true
-    psql -X -c "DROP EXTENSION pg_tle;" >/dev/null 2>&1 || true
+    assert_success "pgtle-install tests failed for pg_tle version $version"
+
   done <<< "$versions"
 }
 
