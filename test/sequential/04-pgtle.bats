@@ -401,5 +401,25 @@ call_pgtle_function() {
   assert_contains "Major version too large"
 }
 
+@test "pgtle: empty upgrade file generates working no-op upgrade path" {
+  # Empty upgrade files are intentional no-op upgrades (version bump only).
+  # pgtle.sh should generate an upgrade path that pg_tle accepts.
+
+  # Create an empty upgrade file (no-op upgrade)
+  touch "sql/pgxntool-test--0.1.1--0.1.2.sql"
+
+  # Should succeed and generate upgrade path
+  run make pgtle
+  assert_success
+
+  # Verify the upgrade path was generated
+  grep -q "install_update_path" "pg_tle/1.5.0+/pgxntool-test.sql"
+  grep -q "0.1.1.*0.1.2\|0.1.2.*0.1.1" "pg_tle/1.5.0+/pgxntool-test.sql"
+
+  # Cleanup
+  rm -f "sql/pgxntool-test--0.1.1--0.1.2.sql"
+  rm -rf pg_tle
+}
+
 # vi: expandtab sw=2 ts=2
 
