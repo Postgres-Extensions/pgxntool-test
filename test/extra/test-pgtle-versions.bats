@@ -71,9 +71,18 @@ setup() {
     out -f "Running pgtle-install tests with pg_tle version: $version"
 
     # Clean up before each version test
-    psql -X -c "DROP EXTENSION IF EXISTS \"pgxntool-test\";" >/dev/null 2>&1 || true
-    psql -X -c "SELECT pgtle.uninstall_extension('pgxntool-test');" >/dev/null 2>&1 || true
-    psql -X -c "DROP EXTENSION IF EXISTS pg_tle CASCADE;" >/dev/null 2>&1 || true
+    psql -X -c "DROP EXTENSION IF EXISTS \"pgxntool-test\";" >/dev/null 2>&1
+    # Unregister from pg_tle if registered (only if pg_tle extension exists)
+    psql -X -c "DO \$\$ BEGIN IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_tle') THEN PERFORM pgtle.uninstall_extension('pgxntool-test'); END IF; EXCEPTION WHEN no_data_found THEN NULL; END \$\$;" >/dev/null 2>&1
+    psql -X -c "DROP EXTENSION IF EXISTS pg_tle CASCADE;" >/dev/null 2>&1
+
+    # Remove physical extension files if installed (pg_tle refuses to register
+    # extensions that have physical control files)
+    local ext_dir
+    ext_dir=$(psql -X -tAc "SELECT setting || '/extension' FROM pg_config WHERE name = 'SHAREDIR';" | tr -d '[:space:]')
+    if [ -n "$ext_dir" ] && [ -f "$ext_dir/pgxntool-test.control" ]; then
+      rm -f "$ext_dir"/pgxntool-test*
+    fi
 
     # Run pgtle-install.bats with target version
     # The tests will use ensure_pgtle_extension to install this version

@@ -88,16 +88,16 @@ setup() {
 
   # Clean up any existing extension registration from previous test runs
   psql -X -c "DROP EXTENSION IF EXISTS \"pgxntool-test\";" >/dev/null 2>&1
-  # Unregister from pg_tle if registered (ignore error if not registered)
-  psql -X -c "
-    DO \$\$
-    BEGIN
-      PERFORM pgtle.uninstall_extension('pgxntool-test');
-    EXCEPTION WHEN no_data_found THEN
-      NULL;
-    END
-    \$\$;
-  " >/dev/null 2>&1
+  # Unregister from pg_tle if registered (only if pg_tle extension exists)
+  psql -X -c "DO \$\$ BEGIN IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_tle') THEN PERFORM pgtle.uninstall_extension('pgxntool-test'); END IF; EXCEPTION WHEN no_data_found THEN NULL; END \$\$;" >/dev/null 2>&1
+
+  # Remove physical extension files if installed (pg_tle refuses to register
+  # extensions that have physical control files in the extension directory)
+  local ext_dir
+  ext_dir=$(psql -X -tAc "SELECT setting || '/extension' FROM pg_config WHERE name = 'SHAREDIR';" | tr -d '[:space:]')
+  if [ -n "$ext_dir" ] && [ -f "$ext_dir/pgxntool-test.control" ]; then
+    rm -f "$ext_dir"/pgxntool-test*
+  fi
 
   # Generate pg_tle SQL files first
   run make pgtle
@@ -145,17 +145,7 @@ setup() {
 
   # Test the exception handler pattern that should be in generated SQL
   # This should succeed because no_data_found catches P0002
-  run psql -X -v ON_ERROR_STOP=1 -c "
-DO \$\$
-BEGIN
-    PERFORM pgtle.uninstall_extension('__nonexistent_test_extension__');
-EXCEPTION
-    WHEN no_data_found THEN
-        -- Extension not registered yet (pg_tle raises P0002)
-        NULL;
-END
-\$\$;
-"
+  run psql -X -v ON_ERROR_STOP=1 -c "DO \$\$ BEGIN PERFORM pgtle.uninstall_extension('__nonexistent_test_extension__'); EXCEPTION WHEN no_data_found THEN NULL; END \$\$;"
   if [ "$status" -ne 0 ]; then
     echo "Exception handler failed to catch no_data_found (P0002)" >&2
     echo "Output:" >&2
@@ -171,15 +161,7 @@ END
   # Clean up any existing registration and generated files
   psql -X -c "DROP EXTENSION IF EXISTS \"pgxntool-test\";" >/dev/null 2>&1
   # Unregister from pg_tle if registered (ignore error if not registered)
-  psql -X -c "
-    DO \$\$
-    BEGIN
-      PERFORM pgtle.uninstall_extension('pgxntool-test');
-    EXCEPTION WHEN no_data_found THEN
-      NULL;
-    END
-    \$\$;
-  " >/dev/null 2>&1
+  psql -X -c "DO \$\$ BEGIN IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_tle') THEN PERFORM pgtle.uninstall_extension('pgxntool-test'); END IF; EXCEPTION WHEN no_data_found THEN NULL; END \$\$;" >/dev/null 2>&1
   rm -rf "$TEST_REPO/pg_tle"
 
   # Remove physical extension files if installed (pg_tle refuses to register
