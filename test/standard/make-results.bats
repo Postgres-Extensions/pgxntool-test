@@ -28,11 +28,6 @@ setup() {
 @test "make results establishes baseline expected output" {
   skip_if_no_postgres
   
-  # Clean up any leftover files in test/output/ from previous test runs
-  # (pg_regress uses test/output/ for diffs, but empty .source files might be left behind)
-  # These can interfere with make_results.sh which checks for output/*.source files
-  rm -f test/output/*.source
-
   # Skip if expected output already exists and has content
   if [ -f "test/expected/pgxntool-test.out" ] && [ -s "test/expected/pgxntool-test.out" ]; then
     skip "Expected output already established"

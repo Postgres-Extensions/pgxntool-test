@@ -1,4 +1,4 @@
-\i @abs_srcdir@/pgxntool/setup.sql
+\i test/pgxntool/setup.sql
 
 SELECT plan(1);
 
@@ -7,6 +7,6 @@ SELECT is(
   , 3
 );
 
-\i @abs_srcdir@/pgxntool/finish.sql
+\i test/pgxntool/finish.sql
 
 -- vi: expandtab ts=2 sw=2

@@ -206,7 +206,7 @@ teardown_file() {
   assert_success  # Any status other than 0 or 1 is a real grep error
 
   # Filter out the tests that are allowed to call make results
-  run grep -v -e 'make-results\.bats$' -e 'make-results-source-files\.bats$' <<< "$output"
+  run grep -v -e 'make-results\.bats$' <<< "$output"
 
   # grep returns 1 when all lines are filtered out -- that's the success case
   if [ "$status" -eq 1 ]; then
@@ -217,7 +217,7 @@ teardown_file() {
   # If we get here, there are violations (grep returned 0, meaning matches remain)
   echo "FAIL: The following tests call 'make results' but should not:" >&2
   echo "$output" >&2
-  echo "Only make-results.bats and make-results-source-files.bats may call 'make results'" >&2
+  echo "Only make-results.bats may call 'make results'" >&2
   return 1
 }
 

@@ -43,11 +43,10 @@ test/
 test/deps.sql
 test/expected/
 test/expected/base.out
-test/input/
-test/input/pgxntool-test.source
 test/pgxntool
 test/sql/
 test/sql/base.sql
+test/sql/pgxntool-test.sql
 
 # pgxntool framework (the build system itself)
 pgxntool/
@@ -59,7 +58,6 @@ pgxntool/JSON.sh
 pgxntool/JSON.sh.LICENSE
 pgxntool/LICENSE
 pgxntool/lib.sh
-pgxntool/make_results.sh
 pgxntool/META.in.json
 pgxntool/control.mk.sh
 pgxntool/meta.mk.sh
