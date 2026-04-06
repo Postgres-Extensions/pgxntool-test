@@ -36,6 +36,8 @@ setup() {
 
   run make test-build
   assert_success
+
+  assert_repo_clean "after make test-build"
 }
 
 @test "test-build fails with invalid SQL" {

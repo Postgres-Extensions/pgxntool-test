@@ -113,6 +113,30 @@ assert_git_dirty() {
   [ -n "$(cd "$repo" && git status --porcelain)" ]
 }
 
+# Assert that the git working tree is clean (no untracked or modified files)
+#
+# Call this after running make targets to detect generated files that aren't
+# properly gitignored. Provides actionable diagnostics listing each file.
+#
+# Usage:
+#   assert_repo_clean
+#   assert_repo_clean "after make test-build"  # optional context message
+assert_repo_clean() {
+  local context="${1:-}"
+  local status_output
+  status_output=$(git status --porcelain)
+
+  if [ -n "$status_output" ]; then
+    local msg="Repository not clean"
+    [ -n "$context" ] && msg="$msg ($context)"
+    out "$msg:"
+    while IFS= read -r line; do
+      out "  $line"
+    done <<< "$status_output"
+    return 1
+  fi
+}
+
 # String Assertions
 
 assert_contains() {

@@ -56,6 +56,8 @@ setup() {
   assert_file_exists test/results/verify_install_marker.out
   run diff test/expected/verify_install_marker.out test/results/verify_install_marker.out
   assert_success
+
+  assert_repo_clean "after make test"
 }
 
 @test "make clean removes install schedule file" {

@@ -579,10 +579,7 @@ In a real extension, these would already exist before adding pgxntool."
   run make
   assert_success
 
-  # Verify working tree is clean
-  run git status --porcelain
-  assert_success
-  [ -z "$output" ]
+  assert_repo_clean "after make"
 }
 
 # vi: expandtab sw=2 ts=2
