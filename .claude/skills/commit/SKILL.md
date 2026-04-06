@@ -19,7 +19,7 @@ Create git commits following project standards and safety protocols for pgxntool
 |------|---------|
 | **Git Safety** | Never update git config. Never force push. Never skip hooks unless requested. |
 | **Attribution** | No "Generated with Claude Code" in body. Co-Authored-By trailer is OK. |
-| **Multi-Repo** | Commit BOTH repos if both have changes (unless told otherwise). No empty commits. |
+| **Multi-Repo** | Commit BOTH repos if both have changes (unless told otherwise). No empty commits. Never create a branch on a repo that has no changes. |
 | **Testing** | ALL tests must pass. ANY failure = STOP and ask user. No rationalizing failures. |
 | **HISTORY.asc** | Update for significant user-visible pgxntool changes. Propose entry, get confirmation. |
 

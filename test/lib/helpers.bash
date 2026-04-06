@@ -182,8 +182,13 @@ debug_vars() {
   debug "$level" "$output"
 }
 
-# Check that pgxntool-test and pgxntool are on the same branch
-# This prevents confusing test failures when someone commits to the wrong branch
+# Check branch alignment between pgxntool-test and pgxntool
+#
+# Rules (bidirectional):
+#   - If either repo is on a non-master branch, both must be on the same branch,
+#     UNLESS the other repo doesn't have that branch (falls through to master).
+#   - The two repos can NEVER be on two completely different non-master branches.
+#
 # Must be called after TOPDIR is set
 check_branch_alignment() {
   # Skip if PGXNBRANCH is explicitly set (user knows what they're doing)
@@ -193,9 +198,9 @@ check_branch_alignment() {
   fi
 
   # Get pgxntool-test's current branch
-  local test_harness_branch
-  test_harness_branch=$(git -C "$TOPDIR" symbolic-ref --short HEAD 2>/dev/null || echo "")
-  if [ -z "$test_harness_branch" ]; then
+  local test_branch
+  test_branch=$(git -C "$TOPDIR" symbolic-ref --short HEAD 2>/dev/null || echo "")
+  if [ -z "$test_branch" ]; then
     debug 3 "check_branch_alignment: pgxntool-test not on a branch (detached HEAD?), skipping check"
     return 0
   fi
@@ -209,44 +214,86 @@ check_branch_alignment() {
     return 0
   fi
 
-  # Get pgxntool's current branch
-  local pgxntool_branch
-  pgxntool_branch=$(git -C "$pgxnrepo_path" symbolic-ref --short HEAD 2>/dev/null || echo "")
-  if [ -z "$pgxntool_branch" ]; then
+  local tool_branch
+  tool_branch=$(git -C "$pgxnrepo_path" symbolic-ref --short HEAD 2>/dev/null || echo "")
+  if [ -z "$tool_branch" ]; then
     debug 3 "check_branch_alignment: pgxntool not on a branch (detached HEAD?), skipping check"
     return 0
   fi
 
-  debug 3 "check_branch_alignment: pgxntool-test='$test_harness_branch', pgxntool='$pgxntool_branch'"
+  debug 3 "check_branch_alignment: pgxntool-test='$test_branch', pgxntool='$tool_branch'"
 
-  # Check for mismatch
-  if [ "$test_harness_branch" != "$pgxntool_branch" ]; then
+  # Same branch → OK
+  if [ "$test_branch" = "$tool_branch" ]; then
+    debug 2 "check_branch_alignment: Both repos on '$test_branch', OK"
+    return 0
+  fi
+
+  # Different branches - figure out what's wrong
+
+  # Two different non-master branches → always an error
+  if [ "$test_branch" != "master" ] && [ "$tool_branch" != "master" ]; then
     out
     out "=========================================================================="
     out "ERROR: Branch mismatch detected!"
     out
-    out "  pgxntool-test is on branch: $test_harness_branch"
-    out "  pgxntool is on branch:      $pgxntool_branch"
+    out "  pgxntool-test is on branch: $test_branch"
+    out "  pgxntool is on branch:      $tool_branch"
     out
-    out "This usually happens when you commit to the wrong branch in pgxntool."
-    out "Tests will fail confusingly because they pull from the wrong branch."
+    out "Both repos are on different non-master branches. They must be on the"
+    out "same branch."
     out
     out "To fix:"
-    out "  1. Switch pgxntool to the correct branch:"
-    out "     cd $(cd "$pgxnrepo_path" && pwd) && git checkout $test_harness_branch"
-    out
-    out "  2. Or switch pgxntool-test to match pgxntool:"
-    out "     cd $TOPDIR && git checkout $pgxntool_branch"
-    out
-    out "  3. Or set PGXNBRANCH explicitly to override:"
-    out "     PGXNBRANCH=$pgxntool_branch make test"
+    out "  1. Switch both repos to the same branch"
+    out "  2. Or set PGXNBRANCH explicitly to override:"
+    out "     PGXNBRANCH=<branch> make test"
     out "=========================================================================="
     out
     return 1
   fi
 
-  debug 2 "check_branch_alignment: Both repos on '$test_harness_branch', OK"
-  return 0
+  # One is on master, one is on a feature branch.
+  # Check if the master-side repo has the feature branch.
+  local feature_branch master_repo_name master_repo_path feature_repo_name
+  if [ "$test_branch" = "master" ]; then
+    feature_branch="$tool_branch"
+    master_repo_name="pgxntool-test"
+    master_repo_path="$TOPDIR"
+    feature_repo_name="pgxntool"
+  else
+    feature_branch="$test_branch"
+    master_repo_name="pgxntool"
+    master_repo_path="$pgxnrepo_path"
+    feature_repo_name="pgxntool-test"
+  fi
+
+  if ! git -C "$master_repo_path" rev-parse --verify "$feature_branch" >/dev/null 2>&1; then
+    # Master-side repo doesn't have the feature branch → OK, will use master
+    debug 2 "check_branch_alignment: $master_repo_name has no branch '$feature_branch', will use master"
+    return 0
+  fi
+
+  # Master-side repo HAS the feature branch but isn't on it → error
+  out
+  out "=========================================================================="
+  out "ERROR: Branch mismatch detected!"
+  out
+  out "  pgxntool-test is on branch: $test_branch"
+  out "  pgxntool is on branch:      $tool_branch"
+  out "  $master_repo_name HAS branch: $feature_branch"
+  out
+  out "$feature_repo_name is on '$feature_branch' and $master_repo_name has that"
+  out "branch but isn't on it."
+  out
+  out "To fix:"
+  out "  1. Switch $master_repo_name to the matching branch:"
+  out "     cd $(cd "$master_repo_path" && pwd) && git checkout $feature_branch"
+  out
+  out "  2. Or set PGXNBRANCH explicitly to override:"
+  out "     PGXNBRANCH=$tool_branch make test"
+  out "=========================================================================="
+  out
+  return 1
 }
 
 # Setup pgxntool-related variables
@@ -255,37 +302,26 @@ setup_pgxntool_vars() {
   # This catches the common error of committing to wrong branch early
   check_branch_alignment || return 1
 
-  # Smart branch detection: if pgxntool-test is on a non-master branch,
-  # automatically use the same branch from pgxntool if it exists
+  # Smart branch detection: use matching branch from pgxntool if it exists,
+  # otherwise fall back to master
   if [ -z "$PGXNBRANCH" ]; then
-    # Detect current branch of pgxntool-test
-    local TEST_HARNESS_BRANCH=$(git -C "$TOPDIR" symbolic-ref --short HEAD 2>/dev/null || echo "master")
+    local TEST_HARNESS_BRANCH
+    TEST_HARNESS_BRANCH=$(git -C "$TOPDIR" symbolic-ref --short HEAD 2>/dev/null || echo "master")
     debug 5 "TEST_HARNESS_BRANCH=$TEST_HARNESS_BRANCH"
 
-    # Default to master if test harness is on master
+    local PGXNREPO_TEMP=${PGXNREPO:-${TOPDIR}/../pgxntool}
+
     if [ "$TEST_HARNESS_BRANCH" = "master" ]; then
       PGXNBRANCH="master"
+    elif local_repo "$PGXNREPO_TEMP" && \
+         git -C "$PGXNREPO_TEMP" rev-parse --verify "$TEST_HARNESS_BRANCH" >/dev/null 2>&1; then
+      # pgxntool has the matching branch - use it
+      # (check_branch_alignment already verified pgxntool is on this branch)
+      PGXNBRANCH="$TEST_HARNESS_BRANCH"
     else
-      # Check if pgxntool is local and what branch it's on
-      local PGXNREPO_TEMP=${PGXNREPO:-${TOPDIR}/../pgxntool}
-      if local_repo "$PGXNREPO_TEMP"; then
-        local PGXNTOOL_BRANCH=$(git -C "$PGXNREPO_TEMP" symbolic-ref --short HEAD 2>/dev/null || echo "master")
-        debug 5 "PGXNTOOL_BRANCH=$PGXNTOOL_BRANCH"
-
-        # Use pgxntool's branch if it's master or matches test harness branch
-        if [ "$PGXNTOOL_BRANCH" = "master" ] || [ "$PGXNTOOL_BRANCH" = "$TEST_HARNESS_BRANCH" ]; then
-          PGXNBRANCH="$PGXNTOOL_BRANCH"
-        else
-          # Different branches - this should have been caught by check_branch_alignment
-          # but we keep the warning for safety
-          out "WARNING: pgxntool-test is on '$TEST_HARNESS_BRANCH' but pgxntool is on '$PGXNTOOL_BRANCH'"
-          out "Using 'master' branch. Set PGXNBRANCH explicitly to override."
-          PGXNBRANCH="master"
-        fi
-      else
-        # Remote repo - default to master
-        PGXNBRANCH="master"
-      fi
+      # No matching branch in pgxntool - use master
+      debug 2 "pgxntool has no branch '$TEST_HARNESS_BRANCH', using master"
+      PGXNBRANCH="master"
     fi
   fi
 

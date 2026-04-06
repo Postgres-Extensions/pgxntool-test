@@ -13,7 +13,9 @@ Create pull requests for pgxntool and pgxntool-test changes, following the two-r
 
 1. **Check both repositories** - Always check git status in both pgxntool and pgxntool-test
 
-2. **Create PRs in correct order** - If both have changes: pgxntool first, then pgxntool-test
+2. **Only create PRs for repos with changes** - Never create a branch or PR for a repo that has no changes. It's normal for only one repo to have changes.
+
+3. **Create PRs in correct order** - If both have changes: pgxntool first, then pgxntool-test
 
 3. **Always target main repositories:**
    - pgxntool: `--repo Postgres-Extensions/pgxntool`

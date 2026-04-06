@@ -80,6 +80,20 @@ This repository contains template extension files in the `template/` directory w
 
 **Where it belongs**: `../pgxntool/.gitattributes` is the correct location - it controls what gets excluded from distributions when extension developers run `make dist`.
 
+## Running Skills and Scripts
+
+**CRITICAL**: Always run skill scripts using relative paths from the repo root, never absolute paths. Absolute paths cause permission issues.
+
+```bash
+# CORRECT:
+bash .claude/skills/test/scripts/run-tests.sh test-all
+
+# WRONG:
+bash /Users/.../pgxntool-test/.claude/skills/test/scripts/run-tests.sh test-all
+```
+
+Ensure your working directory is the pgxntool-test repo root before running skill scripts.
+
 ## Testing
 
 **For all testing information, use the test subagent** (`.claude/agents/test.md`).
