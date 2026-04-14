@@ -11,10 +11,14 @@
 #
 # This test uses the template-multi-extension/ template which contains:
 # - ext_alpha.control (default_version = '1.0.0')
-# - ext_beta.control (default_version = '2.5.0')
+# - ext_beta.control (default_version = '2.5.0' with trailing comment)
 # - sql/ext_alpha.sql
 # - sql/ext_beta.sql
 # - META.in.json (with provides for both extensions)
+#
+# Note: ext_beta.control intentionally has a trailing comment on default_version.
+# This exercises pgtle.sh's parse_control_file to catch the quote-before-comment bug
+# (issue #25). Do not remove the comment from ext_beta.control.
 
 load ../lib/helpers
 
@@ -106,6 +110,11 @@ setup() {
   # Use 'make all' explicitly because the default target in base.mk is META.json
   # (due to it being the first target defined). This is a quirk of base.mk.
   run make all
+  assert_success
+
+  # Also verify pgtle generation works — ext_beta.control has a trailing comment on
+  # default_version to exercise parse_control_file's comment handling (issue #25).
+  run make pgtle
   assert_success
 }
 

@@ -1,3 +1,3 @@
 comment = 'Beta extension for multi-extension testing'
-default_version = '2.5.0'
+default_version = '2.5.0' # DO NOT REMOVE: trailing comment exercises parse_control_file comment handling (issue #25)
 requires = 'plpgsql'

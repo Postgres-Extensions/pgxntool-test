@@ -138,6 +138,13 @@ Tests should generally avoid making changes to template environments. Writing te
 
 Both of these are trade-offs: the goal is to reduce test code complexity.
 
+**Use template files to provide automatic coverage**: If a bug is triggered by specific file content (e.g., a trailing comment in a control file), add that content directly to the appropriate template file rather than writing test code to create it. This gives automatic coverage across all tests that use that template, without any new test code. Use a prominent comment in the template file explaining why the content must not be removed — e.g.:
+```
+default_version = '2.5.0' # DO NOT REMOVE: trailing comment exercises parse_control_file comment handling (issue #25)
+```
+
+**Combine simple sanity checks into a single `@test`**: BATS has per-test overhead (setup, teardown, process spawning). Avoid creating a dedicated `@test` for a single simple assertion. Instead, add the check inline into an existing related `@test`, or consolidate multiple simple one-liner checks into a single `@test "...: simple sanity checks"` block. Reserve dedicated `@test` blocks for checks that need their own setup/teardown or that test meaningfully distinct behaviors.
+
 ## File Structure
 
 ```
