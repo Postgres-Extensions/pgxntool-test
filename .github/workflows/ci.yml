@@ -1,0 +1,116 @@
+name: CI
+
+on:
+  pull_request:
+    # We use 'pull_request' (not 'pull_request_target') deliberately.
+    # 'pull_request_target' runs with write access to the base repo, which is
+    # a security risk for untrusted fork code. Since this workflow only reads
+    # from other public repos (no secrets needed), 'pull_request' is correct
+    # and safe even for fork PRs.
+
+jobs:
+  test:
+    name: 🐘 PostgreSQL ${{ matrix.pg }}
+    runs-on: ubuntu-latest
+    container: pgxn/pgxn-tools
+    strategy:
+      matrix:
+        pg: [17, 16, 15, 14, 13, 12]
+
+    steps:
+      - name: Start PostgreSQL ${{ matrix.pg }}
+        run: pg-start ${{ matrix.pg }}
+
+      - name: Check out pgxntool-test
+        uses: actions/checkout@v4
+        with:
+          path: pgxntool-test
+          # REQUIRED: pgxntool-test includes BATS as a git submodule at
+          # test/bats/. Without this, the submodule directory is empty and
+          # every test invocation fails with "bats: command not found" — a
+          # confusing error that looks like a PATH issue rather than a missing
+          # submodule init.
+          submodules: recursive
+
+      - name: Resolve pgxntool branch
+        id: pgxntool-ref
+        run: |
+          BRANCH="${{ github.head_ref }}"
+
+          # Check whether pgxntool has a branch with the same name as this PR.
+          # If it does, use it — changes in this test PR may depend on changes
+          # in a paired pgxntool branch. If not, fall back to master.
+          #
+          # --exit-code makes git ls-remote return non-zero when the ref is
+          # absent, so we can branch on the result cleanly without parsing output.
+          if git ls-remote --exit-code --heads \
+               https://github.com/Postgres-Extensions/pgxntool.git \
+               "refs/heads/${BRANCH}" > /dev/null 2>&1; then
+            echo "ref=${BRANCH}" >> "$GITHUB_OUTPUT"
+            echo "Using pgxntool branch: ${BRANCH}"
+          else
+            echo "ref=master" >> "$GITHUB_OUTPUT"
+            echo "pgxntool branch '${BRANCH}' not found; falling back to master"
+          fi
+
+      - name: Check out pgxntool
+        uses: actions/checkout@v4
+        with:
+          repository: Postgres-Extensions/pgxntool
+          ref: ${{ steps.pgxntool-ref.outputs.ref }}
+          path: pgxntool
+          submodules: false  # pgxntool has no submodules
+
+      - name: Configure git for CI
+        run: |
+          # The container may run as a different UID than the user who owns the
+          # checkout directories. Without safe.directory, git prints
+          # "fatal: dubious ownership" and refuses to operate — causing cryptic
+          # test failures unrelated to the actual code being tested.
+          git config --global --add safe.directory "$GITHUB_WORKSPACE/pgxntool"
+          git config --global --add safe.directory "$GITHUB_WORKSPACE/pgxntool-test"
+
+          # Required for any git operations that create commits inside tests
+          # (e.g. the test repo created by foundation.bats).
+          git config --global user.email "ci@github-actions"
+          git config --global user.name "GitHub Actions"
+
+          # actions/checkout leaves HEAD detached at the PR merge commit.
+          # Tests that call 'git subtree add' need a real local branch name,
+          # not a detached HEAD. -B force-creates the branch even if it already
+          # exists (plain -b errors on existing branches).
+          cd pgxntool
+          git checkout -B "${{ steps.pgxntool-ref.outputs.ref }}"
+
+      - name: Install dependencies
+        run: |
+          apt-get update -qq
+          apt-get install -y -qq \
+            rsync \
+            ruby-asciidoctor \
+            jq
+          # rsync: used extensively in test infrastructure (foundation.bats,
+          # build_test_repo_from_template, ensure_foundation). Absent rsync
+          # causes failures deep inside BATS output that look like test logic
+          # problems rather than a missing system dependency.
+          #
+          # ruby-asciidoctor: required by Makefile's check-readme target, called
+          # during test-setup. Missing it fails the setup phase before any tests
+          # run, with an error that mentions asciidoctor but not CI setup.
+          #
+          # jq: required by assert_valid_meta_json(). Listed proactively —
+          # pgxn-tools may add it eventually but it is not guaranteed, and the
+          # error when it's absent is a cryptic parse failure rather than
+          # "jq: not found".
+
+      - name: Run tests
+        working-directory: pgxntool-test
+        env:
+          # Tell the test infrastructure which pgxntool branch to use.
+          # helpers.bash normally auto-detects this via 'git ls-remote', but
+          # in CI our pgxntool is checked out at a specific ref, not necessarily
+          # the tip of a named remote branch. Setting PGXNBRANCH explicitly
+          # bypasses auto-detection and prevents it from choosing the wrong
+          # branch or failing on the detached HEAD state.
+          PGXNBRANCH: ${{ steps.pgxntool-ref.outputs.ref }}
+        run: make test
