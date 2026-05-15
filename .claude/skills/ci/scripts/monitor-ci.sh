@@ -142,7 +142,7 @@ monitor_one() {
   conclusion=$(echo "$result" | jq -r '.conclusion')
   echo "$label Run $run_id completed: $(echo "$conclusion" | tr '[:lower:]' '[:upper:]')"
   echo "$result" | jq -r '.jobs[] | "\(if .conclusion == "success" then "PASS" elif .conclusion == null then .status else .conclusion | ascii_upcase end)  \(.name)"' \
-    | sed "s/^/$label /"
+    | sed "s|^|$label |"
 
   # Step 5: for failed jobs, print the failure log (last 60 lines per job).
   if [[ "$conclusion" != "success" ]]; then
@@ -173,6 +173,8 @@ monitor_one() {
 
 # ─── Main: run monitors in parallel or series ─────────────────────────────────
 exit_code=0
+pid_test=""
+pid_pgxn=""
 
 case "$REPOS" in
   pgxntool-test)

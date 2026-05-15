@@ -9,9 +9,15 @@ monitor the CI run for that push. If you pushed to both pgxntool and
 pgxntool-test, start a background task for each repo — do not monitor them
 sequentially.
 
-Use `gh run watch` or poll with `gh run list` / `gh pr checks` in the
-background task. Report failures to the user as soon as they are detected;
-do not wait for all jobs to finish before reporting.
+Always use the `/ci` skill (`bash .claude/skills/ci/scripts/monitor-ci.sh`).
+Pass the exact push SHA when available — `gh run list --branch` has a race
+condition: if two pushes land close together on the same branch (e.g., two
+Claude sessions pushing in parallel), `--branch` may pick up the wrong run.
+`--commit SHA` targets the exact push and avoids this.
+
+**After every monitor run, check the `=== BRANCHES: pgxntool=X
+pgxntool-test=Y ===` line** to verify the right code is under test. If the
+branches don't match what you pushed, cancel the run and re-trigger.
 
 ## Multiple Concurrent Sessions
 

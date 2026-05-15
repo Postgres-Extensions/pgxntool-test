@@ -37,7 +37,13 @@ Arguments:
 - `sha2`: SHA pushed to pgxntool (optional but recommended)
 
 When pushing to both repos, always pass the SHAs to avoid a race condition where
-`--branch` might pick up a different concurrent push.
+`--branch` might pick up a different concurrent push on the same branch.
+
+> **Race condition note**: `gh run list --branch` returns the most recent run on
+> that branch — if two pushes happen close together (e.g. two sessions pushing
+> in parallel), it may pick up the wrong run. Passing `--commit SHA` targets the
+> exact push and avoids this. When SHA is unavailable, always verify the
+> `=== BRANCHES: ===` line in the output matches the code you pushed.
 
 **Always use `run_in_background: true`.**
 
@@ -66,7 +72,10 @@ The **last line is always `OVERALL: <STATUS>`**. Check this first:
 | `FAIL` | 1 | One or more jobs failed — stop and report |
 | `TIMEOUT` | 2 | Run(s) did not complete within timeout |
 
-Also verify the `=== BRANCHES ===` line matches the code you just pushed.
+**Always verify the `=== BRANCHES ===` line** matches the code you just pushed —
+this is your primary safeguard against the `--branch` race condition. If the
+branches don't match, cancel the run and re-trigger: `gh run cancel <id> --repo
+<repo>` then re-push or re-run via `gh run rerun`.
 
 ### 3. Enforce Results
 
