@@ -35,7 +35,7 @@ make clean-envs && test/bats/bin/bats tests/04-pgtle.bats
 ✅ **DO THIS**:
 ```bash
 test/bats/bin/bats tests/04-pgtle.bats  # Auto-rebuilds if needed
-DEBUG=5 test/bats/bin/bats tests/04-pgtle.bats  # For investigation
+TESTDEBUG=5 test/bats/bin/bats tests/04-pgtle.bats  # For investigation
 ```
 
 **ONLY clean when debugging the cleanup mechanism itself** and you MUST document what cleanup failure you're investigating.
@@ -228,11 +228,11 @@ test/bats/bin/bats tests/test-pgtle-install.bats
 
 ### Debugging
 ```bash
-DEBUG=2 test/bats/bin/bats tests/01-meta.bats  # Debug output
+TESTDEBUG=2 test/bats/bin/bats tests/01-meta.bats  # Debug output
 test/bats/bin/bats --verbose tests/01-meta.bats  # BATS verbose mode
 ```
 
-**Debug levels**: 10 (critical), 20 (significant), 30 (general), 40 (verbose), 50+ (maximum)
+**Debug levels** (set via `TESTDEBUG`): 1 (pollution/critical), 2 (major workflow), 3 (detailed state), 5 (verbose internals)
 
 ---
 
@@ -247,7 +247,8 @@ Tests set these automatically (from `tests/helpers.bash`):
 - `PGXNBRANCH` - Branch to use (defaults to `master`)
 - `TEST_TEMPLATE` - Template directory (defaults to `${TOPDIR}/template`)
 - `PG_LOCATION` - PostgreSQL installation path
-- `DEBUG` - Debug level (0-5)
+- `TESTDEBUG` - Test infrastructure debug level (0-5); controls helpers.bash debug() output
+- `DEBUG` - pgxntool script debug level; controls debug() in pgxntool/lib.sh (independent of TESTDEBUG)
 
 ---
 
@@ -292,7 +293,7 @@ test/bats/bin/bats tests/04-pgtle.bats  # Auto-rebuilds foundation via ensure_fo
 ### Debugging Test Failures
 
 1. Read test output (which assertion failed?)
-2. Use DEBUG mode: `DEBUG=5 test/bats/bin/bats tests/test-name.bats`
+2. Use TESTDEBUG mode: `TESTDEBUG=5 test/bats/bin/bats tests/test-name.bats`
 3. Inspect environment: `cd .envs/sequential/repo && ls -la`
 4. Check state markers: `ls .envs/sequential/.bats-state/`
 5. **Work top-down**: Fix earliest failure first (downstream failures often cascade)
@@ -361,7 +362,7 @@ make test
 test/bats/bin/bats tests/04-pgtle.bats
 
 # Debug
-DEBUG=5 test/bats/bin/bats tests/04-pgtle.bats
+TESTDEBUG=5 test/bats/bin/bats tests/04-pgtle.bats
 
 # Test infrastructure
 make test-recursion

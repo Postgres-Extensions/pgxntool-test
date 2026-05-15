@@ -41,6 +41,18 @@ bash .claude/skills/commit/scripts/gather-repo-info.sh ../pgxntool .
 
 Review output. Identify which repos have changes.
 
+### 2b. Check Debug Level Distribution (pgxntool .sh changes only)
+
+If `../pgxntool/*.sh` files are in the diff, scan each changed file:
+
+1. Collect all `debug N` call levels
+2. Note whether the file contains loops (`for`, `while`)
+3. Flag if: file has loops AND every debug call uses a single-digit level (1-9)
+4. Flag if: file has 5+ debug calls AND they all use the exact same level
+
+This is **advisory only** — present any findings in Step 5 and let the user decide.
+If nothing looks off, say nothing (don't add noise to the common case).
+
 ### 3. Check HISTORY.asc (pgxntool changes only)
 
 Read `../pgxntool/HISTORY.asc`. Determine if changes are significant and user-visible:

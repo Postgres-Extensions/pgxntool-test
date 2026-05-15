@@ -8,6 +8,16 @@
 
 set -euo pipefail
 
+# Set PGPORT from PGCLUSTER if not already set, so pg_regress and other raw
+# PostgreSQL binaries use the correct cluster (Debian pg_wrapper handles
+# PGCLUSTER but raw binaries only respect PGPORT).
+if [ -z "${PGPORT:-}" ] && [ -n "${PGCLUSTER:-}" ]; then
+    _port=$(pg_lsclusters -h 2>/dev/null | awk -v c="$PGCLUSTER" \
+        'BEGIN{split(c,a,"/"); v=a[1]; n=a[2]} $1==v && $2==n {print $3; exit}')
+    [ -n "$_port" ] && export PGPORT=$_port
+    unset _port
+fi
+
 # Determine log directory (per-project, based on working directory)
 LOG_DIR="/tmp/pgxntool-test-logs$(pwd | sed 's/\//_/g')"
 mkdir -p "$LOG_DIR"

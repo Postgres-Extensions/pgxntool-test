@@ -70,13 +70,15 @@ error() {
 
 # Debug output function
 # Usage: debug LEVEL "message"
-# Outputs message if DEBUG >= LEVEL
+# Outputs message if TESTDEBUG >= LEVEL
+# Uses TESTDEBUG (not DEBUG) to avoid conflating test infrastructure verbosity
+# with pgxntool script verbosity — set them independently as needed.
 debug() {
   local level=$1
   shift
   local message="$*"
 
-  if [ "${DEBUG:-0}" -ge "$level" ]; then
+  if [ "${TESTDEBUG:-0}" -ge "$level" ]; then
     out -f "DEBUG[$level]: $message"
   fi
 }
