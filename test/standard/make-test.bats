@@ -101,7 +101,7 @@ EOF
   # Output format: REGRESS_DBNAME is simple variable set to "value"
   local expected_dbname
   expected_dbname=$(make print-REGRESS_DBNAME 2>&1 | sed -n 's/.*set to "\(.*\)"/\1/p')
-  [ -n "$expected_dbname" ] || fail "Could not extract REGRESS_DBNAME from make"
+  [ -n "$expected_dbname" ] || error "Could not extract REGRESS_DBNAME from make"
 
   # Manually create the expected output file
   mkdir -p test/expected

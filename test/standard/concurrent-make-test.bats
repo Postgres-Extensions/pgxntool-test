@@ -51,13 +51,13 @@ setup() {
   dbname1=$(make -C "$repo1" print-REGRESS_DBNAME 2>&1 | sed -n 's/.*set to "\(.*\)"/\1/p')
   dbname2=$(make -C "$repo2" print-REGRESS_DBNAME 2>&1 | sed -n 's/.*set to "\(.*\)"/\1/p')
 
-  [ -n "$dbname1" ] || fail "Could not extract REGRESS_DBNAME from repo1"
-  [ -n "$dbname2" ] || fail "Could not extract REGRESS_DBNAME from repo2"
+  [ -n "$dbname1" ] || error "Could not extract REGRESS_DBNAME from repo1"
+  [ -n "$dbname2" ] || error "Could not extract REGRESS_DBNAME from repo2"
 
   out "repo1 REGRESS_DBNAME: $dbname1"
   out "repo2 REGRESS_DBNAME: $dbname2"
 
-  [ "$dbname1" != "$dbname2" ] || fail "Both repos have the same REGRESS_DBNAME: $dbname1"
+  [ "$dbname1" != "$dbname2" ] || error "Both repos have the same REGRESS_DBNAME: $dbname1"
 }
 
 @test "single-extension repo has exactly one --dbname flag" {
@@ -69,7 +69,7 @@ setup() {
   count=$(echo "$count" | tr -d ' ')
 
   out "single-extension --dbname count: $count"
-  [ "$count" -eq 1 ] || fail "Expected exactly 1 --dbname flag, got $count"
+  [ "$count" -eq 1 ] || error "Expected exactly 1 --dbname flag, got $count"
 }
 
 @test "multi-extension repo has exactly one --dbname flag" {
@@ -81,7 +81,7 @@ setup() {
   count=$(echo "$count" | tr -d ' ')
 
   out "multi-extension --dbname count: $count"
-  [ "$count" -eq 1 ] || fail "Expected exactly 1 --dbname flag, got $count"
+  [ "$count" -eq 1 ] || error "Expected exactly 1 --dbname flag, got $count"
 }
 
 @test "concurrent make test succeeds for both projects" {
@@ -118,8 +118,8 @@ setup() {
 
   rm -f "$log1" "$log2"
 
-  [ $status1 -eq 0 ] || fail "single-extension make test failed"
-  [ $status2 -eq 0 ] || fail "multi-extension make test failed"
+  [ $status1 -eq 0 ] || error "single-extension make test failed"
+  [ $status2 -eq 0 ] || error "multi-extension make test failed"
 }
 
 # vi: expandtab sw=2 ts=2
