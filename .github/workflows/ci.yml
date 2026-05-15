@@ -119,6 +119,25 @@ jobs:
           # error when it's absent is a cryptic parse failure rather than
           # "jq: not found".
 
+      - name: Pre-install pgtap
+        run: |
+          # Pre-install pgtap before running tests to prevent a race condition
+          # in the concurrent-make-test.bats suite.
+          #
+          # The test "concurrent make test succeeds for both projects" runs two
+          # `make test` processes simultaneously. Both check for
+          # $(datadir)/extension/pgtap.control and, finding it absent, both
+          # invoke `pgxn install pgtap --sudo` at the same time. Their
+          # concurrent `gmake install` calls race to write files into the
+          # shared /usr/share/postgresql/<pg>/extension/ directory, causing
+          # "File exists" and "No such file or directory" errors.
+          #
+          # Pre-installing pgtap here ensures the .control file is already
+          # present when the concurrent test runs. Both make processes then
+          # skip the install (the Make target's prerequisite is already
+          # satisfied) and no race occurs.
+          pgxn install pgtap --sudo
+
       - name: Run tests
         working-directory: pgxntool-test
         env:
