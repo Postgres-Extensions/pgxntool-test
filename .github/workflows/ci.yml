@@ -21,6 +21,16 @@ jobs:
       - name: Start PostgreSQL ${{ matrix.pg }}
         run: pg-start ${{ matrix.pg }}
 
+      - name: Report CI context
+        run: |
+          # Print both repos and branches at the top of every job so failures
+          # are easy to correlate to the right code. This is especially useful
+          # when debugging cross-repo issues where the wrong branch was picked.
+          echo "=== CI context ==="
+          echo "Triggered by : ${{ github.repository }} PR #${{ github.event.pull_request.number }}"
+          echo "pgxntool-test branch : ${{ github.head_ref }}"
+          echo "pgxntool branch (resolved below) : (see Resolve pgxntool branch step)"
+
       - name: Check out pgxntool-test
         uses: actions/checkout@v4
         with:
@@ -47,10 +57,10 @@ jobs:
                https://github.com/Postgres-Extensions/pgxntool.git \
                "refs/heads/${BRANCH}" > /dev/null 2>&1; then
             echo "ref=${BRANCH}" >> "$GITHUB_OUTPUT"
-            echo "Using pgxntool branch: ${BRANCH}"
+            echo "=== BRANCHES: pgxntool-test=${BRANCH} pgxntool=${BRANCH} ==="
           else
             echo "ref=master" >> "$GITHUB_OUTPUT"
-            echo "pgxntool branch '${BRANCH}' not found; falling back to master"
+            echo "=== BRANCHES: pgxntool-test=${BRANCH} pgxntool=master (branch not found in pgxntool) ==="
           fi
 
       - name: Check out pgxntool
@@ -90,18 +100,19 @@ jobs:
       - name: Install dependencies
         run: |
           apt-get update -qq
-          apt-get install -y -qq \
-            rsync \
-            ruby-asciidoctor \
-            jq
+          apt-get install -y -qq rsync jq ruby
+          gem install asciidoctor --no-document --quiet
           # rsync: used extensively in test infrastructure (foundation.bats,
           # build_test_repo_from_template, ensure_foundation). Absent rsync
           # causes failures deep inside BATS output that look like test logic
           # problems rather than a missing system dependency.
           #
-          # ruby-asciidoctor: required by Makefile's check-readme target, called
-          # during test-setup. Missing it fails the setup phase before any tests
-          # run, with an error that mentions asciidoctor but not CI setup.
+          # asciidoctor (via gem install, not apt): base.mk searches PATH for
+          # 'asciidoctor'. The apt package ruby-asciidoctor installs the gem
+          # but its binary lands in the Ruby gems bin dir, which is NOT on PATH
+          # in the pgxn-tools container. 'gem install' puts it in /usr/local/bin
+          # which IS on PATH. Diagnosed from: "Could not find asciidoc or
+          # asciidoctor. Add one of them to your PATH." in base.mk output.
           #
           # jq: required by assert_valid_meta_json(). Listed proactively —
           # pgxn-tools may add it eventually but it is not guaranteed, and the
