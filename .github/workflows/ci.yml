@@ -60,6 +60,11 @@ jobs:
           ref: ${{ steps.pgxntool-ref.outputs.ref }}
           path: pgxntool
           submodules: false  # pgxntool has no submodules
+          # REQUIRED: must be a full clone. 'git subtree add' refuses to work
+          # with shallow clones and fails with "shallow roots are not allowed
+          # to be updated" — an error that looks like a remote/ref problem
+          # rather than a depth issue.
+          fetch-depth: 0
 
       - name: Configure git for CI
         run: |
