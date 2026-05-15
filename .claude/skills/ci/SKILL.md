@@ -55,7 +55,18 @@ When the background task completes, read the output. The script emits:
 [pgxntool-test] Run completed: FAILURE
 [pgxntool-test] === FAILURE: 🐘 PostgreSQL 13 ===
 ... failure log lines ...
+OVERALL: FAIL
 ```
+
+The **last line is always `OVERALL: <STATUS>`**. Check this first:
+
+| OVERALL | Exit code | Meaning |
+|---------|-----------|---------|
+| `ALL_PASS` | 0 | All jobs green — safe to proceed |
+| `FAIL` | 1 | One or more jobs failed — stop and report |
+| `TIMEOUT` | 2 | Run(s) did not complete within timeout |
+
+Also verify the `=== BRANCHES ===` line matches the code you just pushed.
 
 ### 3. Enforce Results
 

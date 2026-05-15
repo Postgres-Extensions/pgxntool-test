@@ -10,7 +10,11 @@
 #   sha_pgxntool_test: exact SHA pushed to pgxntool-test (optional)
 #   sha_pgxntool     : exact SHA pushed to pgxntool (optional)
 #
-# Exit code: 0 if all monitored runs succeed, 1 otherwise.
+# Exit codes:
+#   0 : ALL_PASS  — all jobs succeeded
+#   1 : FAIL      — one or more jobs failed
+#   2 : TIMEOUT   — run(s) did not complete within the timeout
+#   3 : NO_RUNS   — no CI run found for this branch after waiting
 #
 # Requires: gh CLI authenticated with repo access.
 
@@ -130,7 +134,7 @@ monitor_one() {
 
   if [[ $elapsed -ge $timeout ]]; then
     echo "$label ERROR: timed out after ${timeout}s" >&2
-    return 1
+    return 2
   fi
 
   # Step 4: report per-job outcomes.
@@ -185,9 +189,19 @@ case "$REPOS" in
     monitor_one "$REPO_PGXN" "$BRANCH" "$SHA_PGXN" "$TIMEOUT_PGXN" &
     pid_pgxn=$!
 
-    wait "$pid_test"  || { echo "[both] pgxntool-test CI FAILED"; exit_code=1; }
-    wait "$pid_pgxn"  || { echo "[both] pgxntool CI FAILED";      exit_code=1; }
+    wait "$pid_test" || { r=$?; echo "[both] pgxntool-test CI FAILED"; [[ $r -gt $exit_code ]] && exit_code=$r; }
+    wait "$pid_pgxn" || { r=$?; echo "[both] pgxntool CI FAILED";      [[ $r -gt $exit_code ]] && exit_code=$r; }
     ;;
 esac
+
+# Emit a parseable summary line. Claude should check this line rather than
+# parsing the full output. Convention matches the test skill's STATUS line.
+if [[ $exit_code -eq 0 ]]; then
+  echo "OVERALL: ALL_PASS"
+elif [[ $exit_code -eq 2 ]]; then
+  echo "OVERALL: TIMEOUT"
+else
+  echo "OVERALL: FAIL"
+fi
 
 exit $exit_code
