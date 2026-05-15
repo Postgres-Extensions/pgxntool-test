@@ -103,38 +103,48 @@ Each test file automatically runs its prerequisites if needed, so they can be ru
 
 ### PR conventions
 
-When your change requires modifications to both repos, open PRs in **both repos using the same branch name**. For example, if your feature branch is named `feature/add-pgtle-support`, create that branch in both `pgxntool` and `pgxntool-test`. The CI uses the branch name to automatically find the corresponding PR in the other repo.
-
-If your change only affects one repo (e.g., a docs fix in pgxntool-test that doesn't require any pgxntool changes), see [the `no-test-pr` label](#the-no-test-pr-label) below.
+When your change requires modifications to both repos, open PRs in **both repos using the same branch name**. For example, if your feature branch is named `feature/add-pgtle-support`, create that branch in both `pgxntool` and `pgxntool-test`. **Branch names must match exactly** — the CI uses the branch name to find the paired PR.
 
 ### How CI works
 
 **When you open a PR in `pgxntool-test`:**
-CI checks whether `pgxntool` has a branch with the same name. If it does, tests run against that branch. If not, tests run against `pgxntool/master`. Results appear on your pgxntool-test PR.
+CI checks whether `pgxntool` has a branch with the same name. If it does, tests run against that pgxntool branch. If not, tests run against `pgxntool/master`. Results appear directly on your pgxntool-test PR.
 
 **When you open a PR in `pgxntool`:**
-CI searches for an open PR in `pgxntool-test` with the same branch name and waits up to 5 minutes for one to appear (in case you open the second PR shortly after). If a matching test PR is found, CI waits for its checks to pass before running the pgxntool tests against it. Results appear on your pgxntool PR.
+CI immediately checks whether an open PR exists in `pgxntool-test` with the same branch name. There is **no waiting** — the test PR must already be open when your pgxntool CI runs.
 
-If no matching test PR appears within 5 minutes and the PR does not have the `no-test-pr` label, the CI check fails and the PR cannot be merged. This is intentional — it ensures test coverage for pgxntool changes.
+- **If a paired test PR is found**: pgxntool CI passes immediately. Tests run in the pgxntool-test PR's own CI; there is no duplication.
+- **If no paired test PR is found**: pgxntool CI fails (see below).
 
-### The `no-test-pr` label
+### What to do when pgxntool CI fails with "No paired test PR found"
 
-For pgxntool PRs that genuinely don't require any test changes (e.g., documentation updates, comment fixes), a maintainer can apply the `no-test-pr` label to the PR. This tells CI to skip waiting for a test PR and run against `pgxntool-test/master` instead.
+This failure means CI couldn't find an open PR in pgxntool-test with a matching branch name. The fix is almost always:
 
-**This label is write-protected**: only maintainers with write access to the repository can add or remove it. If you add the label yourself, an automated workflow will remove it and explain why. Ask a maintainer to apply it if you believe your PR doesn't need test changes.
+1. **Open a PR in pgxntool-test** from a branch with the **same name** as your pgxntool branch.
+2. Re-run the failing CI check on your pgxntool PR (or push a new commit to trigger it).
 
-To get the label applied:
-1. Open your pgxntool PR as normal.
-2. Leave a comment asking a maintainer to apply `no-test-pr` and explain why no test changes are needed.
+**Branch names must match exactly.** If your pgxntool branch is `fix/parse-bug`, your pgxntool-test branch must also be `fix/parse-bug`.
+
+### The `commit-with-no-tests` label
+
+For pgxntool PRs that genuinely don't require any test changes (documentation fixes, comment updates, etc.), a maintainer can apply the `commit-with-no-tests` label. This tells CI to run tests against `pgxntool-test/master` directly.
+
+**This is not a normal shortcut.** Most pgxntool changes touch behavior that tests must cover. This label is for the rare case where a pgxntool change is truly orthogonal to the test suite.
+
+**This label is write-protected**: only maintainers with write access to the repository can add or remove it. If a non-maintainer applies it, an automated workflow removes it immediately and posts an explanation.
+
+To request the label:
+1. Open your pgxntool PR.
+2. Leave a comment explaining why no test changes are needed.
 3. A maintainer will review and apply the label if appropriate.
 
 ### Branch protection
 
-The `resolve-test-ref` status check on pgxntool is a required check for merging to `master`. It only passes when either:
-- A corresponding pgxntool-test PR CI has passed, or
-- A maintainer has applied the `no-test-pr` label.
+The `check-test-pr` status check on pgxntool is a required check for merging to `master`. It only passes when either:
+- A corresponding pgxntool-test PR exists (with a matching branch name), or
+- A maintainer has applied the `commit-with-no-tests` label.
 
-This means you cannot merge a pgxntool PR without test coverage, even accidentally.
+This ensures pgxntool changes cannot be merged without test coverage.
 
 ## Development
 
