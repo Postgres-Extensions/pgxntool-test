@@ -39,6 +39,9 @@ jobs:
 
   test:
     needs: resolve
+    # run-tests.yml is the single source of truth for all test steps.
+    # See .github/workflows/CLAUDE.md for architecture notes, including
+    # the cross-repo reusable workflow tradeoffs and merge order constraints.
     uses: ./.github/workflows/run-tests.yml
     with:
       pgxntool-ref: ${{ needs.resolve.outputs.pgxntool-ref }}
