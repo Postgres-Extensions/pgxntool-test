@@ -3,16 +3,12 @@ name: Run Tests
 on:
   workflow_call:
     inputs:
-      pgxntool-ref:
-        description: 'The pgxntool branch/ref to check out'
-        type: string
-        required: true
       pgxntool-test-ref:
         description: 'The pgxntool-test ref to check out'
         type: string
         required: true
       pgxntool-branch:
-        description: 'The branch name for git checkout -B (may differ from pgxntool-ref which could be a SHA)'
+        description: 'The pgxntool branch to check out and use as the local branch name'
         type: string
         required: true
 
@@ -54,7 +50,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: ${{ github.repository_owner }}/pgxntool
-          ref: ${{ inputs.pgxntool-ref }}
+          ref: ${{ inputs.pgxntool-branch }}
           path: pgxntool
           submodules: false  # pgxntool has no submodules
           # REQUIRED: must be a full clone. 'git subtree add' refuses to work

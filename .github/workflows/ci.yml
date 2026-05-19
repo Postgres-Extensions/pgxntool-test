@@ -44,6 +44,5 @@ jobs:
     # the cross-repo reusable workflow tradeoffs and merge order constraints.
     uses: ./.github/workflows/run-tests.yml
     with:
-      pgxntool-ref: ${{ needs.resolve.outputs.pgxntool-ref }}
-      pgxntool-test-ref: ${{ github.sha }}
       pgxntool-branch: ${{ needs.resolve.outputs.pgxntool-ref }}
+      pgxntool-test-ref: ${{ github.sha }}
