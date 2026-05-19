@@ -82,11 +82,11 @@ branches don't match, cancel the run and re-trigger: `gh run cancel <id> --repo
 **CRITICAL RULES:**
 
 1. Any CI failure must be **reported to the user immediately**. Do not continue with other work.
-2. Diagnose from the **first** `not ok` line — ignore cascading failures below it.
+2. Start diagnosis from the **first** `not ok` line to understand the root cause, but do not assume later failures are cascading or caused by it — treat each failure as likely real and needing its own investigation. Failures in separate test files are typically unrelated; even multiple failures within the same file may be independent.
 3. Failures in our workflow files (dependency installs, git config, etc.) are our problem to fix.
 4. Failures in test code (not ok from BATS) may be pre-existing — report to user and ask before touching test files.
 5. Never rationalize failures as "pre-existing" or "unrelated" without explicitly telling the user.
-6. If CI is taking longer than expected on pgxntool, it may be waiting up to 5 min for a pgxntool-test PR — that is normal.
+6. If CI is taking longer than expected on pgxntool, it may be waiting up to 20 min for pgxntool-test CI to complete — that is normal.
 
 ## Key rules
 

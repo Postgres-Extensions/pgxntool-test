@@ -25,13 +25,21 @@ BRANCH="${2:-$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")}"
 SHA_TEST="${3:-}"
 SHA_PGXN="${4:-}"
 
-REPO_TEST="Postgres-Extensions/pgxntool-test"
-REPO_PGXN="Postgres-Extensions/pgxntool"
+# Derive owner from the current repo (works for forks too)
+_current_repo=$(gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null || true)
+_owner=$(echo "$_current_repo" | cut -d/ -f1)
+if [[ -z "$_owner" ]]; then
+  # fallback if gh can't determine the repo
+  _owner="Postgres-Extensions"
+fi
+REPO_TEST="${_owner}/pgxntool-test"
+REPO_PGXN="${_owner}/pgxntool"
 
-# pgxntool runs can take up to 10 min: 5 min waiting for a test PR + test time.
-# pgxntool-test runs typically take 2-3 min.
-TIMEOUT_TEST=300    # 5 minutes
-TIMEOUT_PGXN=600    # 10 minutes
+# pgxntool CI can wait up to 20 min for pgxntool-test CI to complete, then
+# runs tests itself (commit-with-no-tests case). Allow 35 min total.
+# pgxntool-test runs typically take 5-10 min (resolve + 6 PG matrix jobs).
+TIMEOUT_TEST=900    # 15 minutes
+TIMEOUT_PGXN=2100   # 35 minutes
 POLL_INTERVAL=10    # seconds between status polls
 
 # ─── Helper: wait for a run to appear, then poll until done ──────────────────

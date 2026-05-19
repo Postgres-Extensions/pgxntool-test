@@ -9,53 +9,13 @@ on:
     # and safe even for fork PRs.
 
 jobs:
-  # ============================================================
-  # WARNING: DUPLICATED JOB — KEEP IN SYNC WITH pgxntool
-  # ============================================================
-  # This job is duplicated in:
-  #   Postgres-Extensions/pgxntool/.github/workflows/ci.yml
-  # (the 'test' job that runs when 'commit-with-no-tests' is set)
-  #
-  # Any change to steps here MUST be made there too, and vice versa.
-  #
-  # TODO: Replace this duplication with a GitHub Actions reusable workflow
-  # (workflow_call) — extract this job to run-tests.yml here, then call it
-  # from pgxntool's ci.yml with the appropriate @ref.
-  # See: https://docs.github.com/en/actions/sharing-automations/reusing-workflows
-  # ============================================================
-  test:
-    name: 🐘 PostgreSQL ${{ matrix.pg }}
+  resolve:
+    name: Resolve pgxntool branch
     runs-on: ubuntu-latest
-    container: pgxn/pgxn-tools
-    strategy:
-      matrix:
-        pg: [17, 16, 15, 14, 13, 12]
+    outputs:
+      pgxntool-ref: ${{ steps.pgxntool-ref.outputs.ref }}
 
     steps:
-      - name: Start PostgreSQL ${{ matrix.pg }}
-        run: pg-start ${{ matrix.pg }}
-
-      - name: Report CI context
-        run: |
-          # Print both repos and branches at the top of every job so failures
-          # are easy to correlate to the right code. This is especially useful
-          # when debugging cross-repo issues where the wrong branch was picked.
-          echo "=== CI context ==="
-          echo "Triggered by : ${{ github.repository }} PR #${{ github.event.pull_request.number }}"
-          echo "pgxntool-test branch : ${{ github.head_ref }}"
-          echo "pgxntool branch (resolved below) : (see Resolve pgxntool branch step)"
-
-      - name: Check out pgxntool-test
-        uses: actions/checkout@v4
-        with:
-          path: pgxntool-test
-          # REQUIRED: pgxntool-test includes BATS as a git submodule at
-          # test/bats/. Without this, the submodule directory is empty and
-          # every test invocation fails with "bats: command not found" — a
-          # confusing error that looks like a PATH issue rather than a missing
-          # submodule init.
-          submodules: recursive
-
       - name: Resolve pgxntool branch
         id: pgxntool-ref
         run: |
@@ -68,7 +28,7 @@ jobs:
           # --exit-code makes git ls-remote return non-zero when the ref is
           # absent, so we can branch on the result cleanly without parsing output.
           if git ls-remote --exit-code --heads \
-               https://github.com/Postgres-Extensions/pgxntool.git \
+               https://github.com/${{ github.repository_owner }}/pgxntool.git \
                "refs/heads/${BRANCH}" > /dev/null 2>&1; then
             echo "ref=${BRANCH}" >> "$GITHUB_OUTPUT"
             echo "=== BRANCHES: pgxntool-test=${BRANCH} pgxntool=${BRANCH} ==="
@@ -77,89 +37,10 @@ jobs:
             echo "=== BRANCHES: pgxntool-test=${BRANCH} pgxntool=master (branch not found in pgxntool) ==="
           fi
 
-      - name: Check out pgxntool
-        uses: actions/checkout@v4
-        with:
-          repository: Postgres-Extensions/pgxntool
-          ref: ${{ steps.pgxntool-ref.outputs.ref }}
-          path: pgxntool
-          submodules: false  # pgxntool has no submodules
-          # REQUIRED: must be a full clone. 'git subtree add' refuses to work
-          # with shallow clones and fails with "shallow roots are not allowed
-          # to be updated" — an error that looks like a remote/ref problem
-          # rather than a depth issue.
-          fetch-depth: 0
-
-      - name: Configure git for CI
-        run: |
-          # The container may run as a different UID than the user who owns the
-          # checkout directories. Without safe.directory, git prints
-          # "fatal: dubious ownership" and refuses to operate — causing cryptic
-          # test failures unrelated to the actual code being tested.
-          git config --global --add safe.directory "$GITHUB_WORKSPACE/pgxntool"
-          git config --global --add safe.directory "$GITHUB_WORKSPACE/pgxntool-test"
-
-          # Required for any git operations that create commits inside tests
-          # (e.g. the test repo created by foundation.bats).
-          git config --global user.email "ci@github-actions"
-          git config --global user.name "GitHub Actions"
-
-          # actions/checkout leaves HEAD detached at the PR merge commit.
-          # Tests that call 'git subtree add' need a real local branch name,
-          # not a detached HEAD. -B force-creates the branch even if it already
-          # exists (plain -b errors on existing branches).
-          cd pgxntool
-          git checkout -B "${{ steps.pgxntool-ref.outputs.ref }}"
-
-      - name: Install dependencies
-        run: |
-          apt-get update -qq
-          apt-get install -y -qq rsync jq ruby
-          gem install asciidoctor --no-document --quiet
-          # rsync: used extensively in test infrastructure (foundation.bats,
-          # build_test_repo_from_template, ensure_foundation). Absent rsync
-          # causes failures deep inside BATS output that look like test logic
-          # problems rather than a missing system dependency.
-          #
-          # asciidoctor (via gem install, not apt): base.mk searches PATH for
-          # 'asciidoctor'. The apt package ruby-asciidoctor installs the gem
-          # but its binary lands in the Ruby gems bin dir, which is NOT on PATH
-          # in the pgxn-tools container. 'gem install' puts it in /usr/local/bin
-          # which IS on PATH. Diagnosed from: "Could not find asciidoc or
-          # asciidoctor. Add one of them to your PATH." in base.mk output.
-          #
-          # jq: required by assert_valid_meta_json(). Listed proactively —
-          # pgxn-tools may add it eventually but it is not guaranteed, and the
-          # error when it's absent is a cryptic parse failure rather than
-          # "jq: not found".
-
-      - name: Pre-install pgtap
-        run: |
-          # Pre-install pgtap before running tests to prevent a race condition
-          # in the concurrent-make-test.bats suite.
-          #
-          # The test "concurrent make test succeeds for both projects" runs two
-          # `make test` processes simultaneously. Both check for
-          # $(datadir)/extension/pgtap.control and, finding it absent, both
-          # invoke `pgxn install pgtap --sudo` at the same time. Their
-          # concurrent `gmake install` calls race to write files into the
-          # shared /usr/share/postgresql/<pg>/extension/ directory, causing
-          # "File exists" and "No such file or directory" errors.
-          #
-          # Pre-installing pgtap here ensures the .control file is already
-          # present when the concurrent test runs. Both make processes then
-          # skip the install (the Make target's prerequisite is already
-          # satisfied) and no race occurs.
-          pgxn install pgtap --sudo
-
-      - name: Run tests
-        working-directory: pgxntool-test
-        env:
-          # Tell the test infrastructure which pgxntool branch to use.
-          # helpers.bash normally auto-detects this via 'git ls-remote', but
-          # in CI our pgxntool is checked out at a specific ref, not necessarily
-          # the tip of a named remote branch. Setting PGXNBRANCH explicitly
-          # bypasses auto-detection and prevents it from choosing the wrong
-          # branch or failing on the detached HEAD state.
-          PGXNBRANCH: ${{ steps.pgxntool-ref.outputs.ref }}
-        run: make test
+  test:
+    needs: resolve
+    uses: ./.github/workflows/run-tests.yml
+    with:
+      pgxntool-ref: ${{ needs.resolve.outputs.pgxntool-ref }}
+      pgxntool-test-ref: ${{ github.sha }}
+      pgxntool-branch: ${{ needs.resolve.outputs.pgxntool-ref }}
