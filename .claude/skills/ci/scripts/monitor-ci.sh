@@ -51,18 +51,21 @@ monitor_one() {
   local label="[$repo]"
   local elapsed=0
 
-  # Step 1: find the run ID
+  # Step 1: find the run ID.
+  # When a SHA is provided, wait up to 30s for GitHub to index that exact run
+  # before falling back to the branch lookup. Without this wait, rapid pushes
+  # cause the branch fallback to pick up the previous run instead of the new one.
   local run_id=""
+  local sha_wait=0
+  local SHA_INDEX_WAIT=30  # seconds to wait for SHA indexing before branch fallback
   echo "$label Waiting for CI run on branch '$branch'..."
   while [[ -z "$run_id" ]]; do
     if [[ -n "$sha" ]]; then
-      # Prefer exact SHA match — avoids race condition when multiple pushes
-      # are close together on the same branch.
       run_id=$(gh run list --repo "$repo" --commit "$sha" \
         --json databaseId --jq '.[0].databaseId // empty' 2>/dev/null || true)
     fi
-    if [[ -z "$run_id" && -n "$branch" ]]; then
-      # Fallback: most recent pull_request run on the branch.
+    if [[ -z "$run_id" && -n "$branch" && ( -z "$sha" || $sha_wait -ge $SHA_INDEX_WAIT ) ]]; then
+      # Only fall back to branch once the SHA wait window has elapsed (or no SHA given).
       # NOTE: this can pick up a different run if two pushes happen rapidly.
       run_id=$(gh run list --repo "$repo" --branch "$branch" \
         --event pull_request --limit 1 \
@@ -71,6 +74,7 @@ monitor_one() {
     if [[ -z "$run_id" ]]; then
       sleep 5
       elapsed=$((elapsed + 5))
+      sha_wait=$((sha_wait + 5))
       if [[ $elapsed -ge $timeout ]]; then
         echo "$label ERROR: no CI run found after ${timeout}s" >&2
         return 1
