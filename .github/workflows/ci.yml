@@ -9,6 +9,20 @@ on:
     # and safe even for fork PRs.
 
 jobs:
+  # ============================================================
+  # WARNING: DUPLICATED JOB — KEEP IN SYNC WITH pgxntool
+  # ============================================================
+  # This job is duplicated in:
+  #   Postgres-Extensions/pgxntool/.github/workflows/ci.yml
+  # (the 'test' job that runs when 'commit-with-no-tests' is set)
+  #
+  # Any change to steps here MUST be made there too, and vice versa.
+  #
+  # TODO: Replace this duplication with a GitHub Actions reusable workflow
+  # (workflow_call) — extract this job to run-tests.yml here, then call it
+  # from pgxntool's ci.yml with the appropriate @ref.
+  # See: https://docs.github.com/en/actions/sharing-automations/reusing-workflows
+  # ============================================================
   test:
     name: 🐘 PostgreSQL ${{ matrix.pg }}
     runs-on: ubuntu-latest
