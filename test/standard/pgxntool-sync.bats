@@ -151,17 +151,35 @@ setup() {
   assert_contains "$output" "Pull pgxntool from"
 }
 
-# The regression this guards against: the default target used to point at the
-# old-owner SSH URL (git@github.com:decibel/pgxntool.git), which fails for
-# anyone without GitHub SSH keys. We can't pull the real remote in the offline
-# suite, so verify statically that the default target delegates to the script
-# and that the script's default source is the canonical Postgres-Extensions
-# repo, not the old decibel remote.
-@test "default sync source points at the canonical repo, not the old remote" {
+# Verify every predefined make target passes the right <repo> <ref> to the
+# script. `make -n` expands the recipe (variables, automatic $@, the pattern
+# rule) without running it, so this checks the wiring of all targets offline --
+# no network pull needed. This is what would have caught the original breakage:
+# the default pointing at a URL/owner that no longer works.
+@test "make sync targets wire to the expected repo and ref" {
+  local upstream="https://github.com/Postgres-Extensions/pgxntool.git"
+
+  # Default: no args -> the script's built-in default (canonical release).
   run make -n pgxntool-sync
   assert_success
   assert_contains "$output" "pgxntool/pgxntool-sync.sh"
+  # Nothing should be appended; the args come from the script's defaults.
+  assert_not_contains "$output" "pgxntool/pgxntool-sync.sh "
 
+  run make -n pgxntool-sync-master
+  assert_success
+  assert_contains "$output" "pgxntool/pgxntool-sync.sh $upstream master"
+
+  run make -n pgxntool-sync-local
+  assert_success
+  assert_contains "$output" "pgxntool/pgxntool-sync.sh ../pgxntool release"
+
+  run make -n pgxntool-sync-local-master
+  assert_success
+  assert_contains "$output" "pgxntool/pgxntool-sync.sh ../pgxntool master"
+
+  # The script's built-in default (used by bare `pgxntool-sync`) must be the
+  # canonical repo on the release tag, not the old decibel remote.
   grep -q "Postgres-Extensions/pgxntool" pgxntool/pgxntool-sync.sh
   ! grep -q "decibel/pgxntool" pgxntool/pgxntool-sync.sh
 }
