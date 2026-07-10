@@ -152,10 +152,16 @@ setup() {
 }
 
 # Verify every predefined make target passes the right <repo> <ref> to the
-# script. `make -n` expands the recipe (variables, automatic $@, the pattern
-# rule) without running it, so this checks the wiring of all targets offline --
-# no network pull needed. This is what would have caught the original breakage:
-# the default pointing at a URL/owner that no longer works.
+# script.
+#
+# `make -n` is dry-run mode: it fully evaluates the makefile (expanding
+# variables, the automatic $@, and the pgxntool-sync-% pattern rule) and prints
+# the exact commands it *would* run, but executes nothing. So we can check what
+# each target resolves to -- offline, with no git subtree pull -- and catch a
+# target wired to the wrong repo/ref. This is the class of bug that broke the
+# default originally (it resolved to a URL/owner that no longer works).
+# It does NOT prove the command succeeds; the direct-script test below covers
+# that a sync actually runs.
 @test "make sync targets wire to the expected repo and ref" {
   local upstream="https://github.com/Postgres-Extensions/pgxntool.git"
 
