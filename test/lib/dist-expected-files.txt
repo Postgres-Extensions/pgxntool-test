@@ -79,6 +79,7 @@ pgxntool/pgtle.sh
 pgxntool/run-test-build.sh
 pgxntool/safesed
 pgxntool/setup.sh
+pgxntool/pgxntool-sync.sh
 pgxntool/update-setup-files.sh
 pgxntool/verify-results-pgtap.sh
 pgxntool/WHAT_IS_THIS

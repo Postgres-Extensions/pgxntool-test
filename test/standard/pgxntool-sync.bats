@@ -1,13 +1,22 @@
 #!/usr/bin/env bats
 
-# Test: make pgxntool-sync end-to-end
+# Test: pgxntool-sync end-to-end
 #
-# This test validates the full `make pgxntool-sync` flow:
+# This test validates the full pgxntool-sync flow:
 #   git subtree pull → update-setup-files.sh
+#
+# Both entry points are exercised:
+#   - the `make pgxntool-sync-<name>` target (variable-driven source)
+#   - running `pgxntool/pgxntool-sync.sh <repo> <branch>` directly, without make
 #
 # Unlike the unit tests in update-setup-files.bats (which test 3-way merge
 # scenarios in isolation), this test exercises the complete sync pipeline
-# including the Makefile target and git subtree pull mechanics.
+# including git subtree pull mechanics.
+#
+# Note: we always sync from a local source repo, never the real default remote.
+# The suite is offline, so the default remote/branch configured in
+# pgxntool-sync.sh is checked statically (see the default-source test) rather
+# than by pulling from the network.
 #
 # A dedicated source repo is needed because git subtree pull requires the
 # initial add to have been done via `git subtree add`. During normal test
@@ -46,6 +55,13 @@ setup_file() {
     git add _.gitignore
     git commit -m "Update gitignore"
     git tag v2
+
+    # A second marker at v3, used to exercise the standalone script path after
+    # the make path has already advanced the test repo to v2.
+    echo "# pgxntool-sync-test-marker-v3" >> _.gitignore
+    git add _.gitignore
+    git commit -m "Update gitignore again"
+    git tag v3
   )
 
   # =========================================================================
@@ -133,6 +149,39 @@ setup() {
   run git log --oneline -1
   assert_success
   assert_contains "$output" "Pull pgxntool from"
+}
+
+# The regression this guards against: the default target used to point at the
+# old-owner SSH URL (git@github.com:decibel/pgxntool.git), which fails for
+# anyone without GitHub SSH keys. We can't pull the real remote in the offline
+# suite, so verify statically that the default target delegates to the script
+# and that the script's default source is the canonical Postgres-Extensions
+# repo, not the old decibel remote.
+@test "default sync source points at the canonical repo, not the old remote" {
+  run make -n pgxntool-sync
+  assert_success
+  assert_contains "$output" "pgxntool/pgxntool-sync.sh"
+
+  grep -q "Postgres-Extensions/pgxntool" pgxntool/pgxntool-sync.sh
+  ! grep -q "decibel/pgxntool" pgxntool/pgxntool-sync.sh
+}
+
+# The script must work without make, since that is the whole point of extracting
+# it from the Makefile recipe. This syncs v2 -> v3 by invoking the script
+# directly (the make tests above already advanced the repo to v2).
+@test "pgxntool-sync.sh can be run directly, without make" {
+  # A sync leaves the reconciled setup files modified but uncommitted, and
+  # git subtree pull refuses to run against a dirty tree. Committing between
+  # syncs is the normal workflow, so commit the v2 result before syncing v3.
+  git add -A
+  git commit -q -m "Commit v2 sync result"
+
+  run ./pgxntool/pgxntool-sync.sh "$SOURCE_REPO" v3
+  assert_success
+  assert_contains "$output" "Checking setup files for updates"
+
+  grep -q "pgxntool-sync-test-marker-v3" .gitignore
+  grep -q "pgxntool-sync-test-marker-v3" pgxntool/_.gitignore
 }
 
 # vi: expandtab sw=2 ts=2
