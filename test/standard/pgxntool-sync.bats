@@ -165,24 +165,23 @@ setup() {
 @test "make sync targets wire to the expected repo and ref" {
   local upstream="https://github.com/Postgres-Extensions/pgxntool.git"
 
-  # Default: no args -> the script's built-in default (canonical release).
+  # Each target prints exactly one command; match it in full. The bare target
+  # passes no args (the script supplies the default repo/ref itself).
   run make -n pgxntool-sync
   assert_success
-  assert_contains "$output" "pgxntool/pgxntool-sync.sh"
-  # Nothing should be appended; the args come from the script's defaults.
-  assert_not_contains "$output" "pgxntool/pgxntool-sync.sh "
+  [ "$output" = "pgxntool/pgxntool-sync.sh" ]
 
   run make -n pgxntool-sync-master
   assert_success
-  assert_contains "$output" "pgxntool/pgxntool-sync.sh $upstream master"
+  [ "$output" = "pgxntool/pgxntool-sync.sh $upstream master" ]
 
   run make -n pgxntool-sync-local
   assert_success
-  assert_contains "$output" "pgxntool/pgxntool-sync.sh ../pgxntool release"
+  [ "$output" = "pgxntool/pgxntool-sync.sh ../pgxntool release" ]
 
   run make -n pgxntool-sync-local-master
   assert_success
-  assert_contains "$output" "pgxntool/pgxntool-sync.sh ../pgxntool master"
+  [ "$output" = "pgxntool/pgxntool-sync.sh ../pgxntool master" ]
 
   # The script's built-in default (used by bare `pgxntool-sync`) must be the
   # canonical repo on the release tag, not the old decibel remote.
