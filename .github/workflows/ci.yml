@@ -1,5 +1,12 @@
 name: CI
 
+permissions:
+  contents: read        # required by actions/checkout in the reusable test workflow
+
+concurrency:
+  group: ci-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 on:
   pull_request:
     # We use 'pull_request' (not 'pull_request_target') deliberately.
@@ -18,8 +25,17 @@ jobs:
     steps:
       - name: Resolve pgxntool branch
         id: pgxntool-ref
+        # PR-controlled values (head_ref) are passed via env, never interpolated
+        # directly into the script, to avoid shell injection.
+        env:
+          BRANCH: ${{ github.head_ref }}
+          REPO_OWNER: ${{ github.repository_owner }}
         run: |
-          BRANCH="${{ github.head_ref }}"
+          # Reject anything that isn't a valid git branch name before using it.
+          git check-ref-format --branch "$BRANCH" >/dev/null 2>&1 || {
+            echo "Invalid branch name: $BRANCH" >&2
+            exit 1
+          }
 
           # Check whether pgxntool has a branch with the same name as this PR.
           # If it does, use it — changes in this test PR may depend on changes
@@ -28,7 +44,7 @@ jobs:
           # --exit-code makes git ls-remote return non-zero when the ref is
           # absent, so we can branch on the result cleanly without parsing output.
           if git ls-remote --exit-code --heads \
-               https://github.com/${{ github.repository_owner }}/pgxntool.git \
+               "https://github.com/${REPO_OWNER}/pgxntool.git" \
                "refs/heads/${BRANCH}" > /dev/null 2>&1; then
             echo "ref=${BRANCH}" >> "$GITHUB_OUTPUT"
             echo "=== BRANCHES: pgxntool-test=${BRANCH} pgxntool=${BRANCH} ==="

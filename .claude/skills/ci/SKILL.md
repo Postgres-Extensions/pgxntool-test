@@ -51,7 +51,7 @@ When pushing to both repos, always pass the SHAs to avoid a race condition where
 
 When the background task completes, read the output. The script emits:
 
-```
+```text
 [pgxntool-test] Run 12345678 found
 [pgxntool-test] === BRANCHES: pgxntool-test=feature/foo pgxntool=feature/foo ===
 [pgxntool-test] Polling... (running: 🐘 PostgreSQL 13, 🐘 PostgreSQL 15)

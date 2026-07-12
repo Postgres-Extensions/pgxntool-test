@@ -77,7 +77,7 @@ monitor_one() {
       sha_wait=$((sha_wait + 5))
       if [[ $elapsed -ge $timeout ]]; then
         echo "$label ERROR: no CI run found after ${timeout}s" >&2
-        return 1
+        return 3  # NO_RUNS (distinct from FAIL/TIMEOUT; see exit-code table)
       fi
     fi
   done
@@ -190,10 +190,13 @@ pid_pgxn=""
 
 case "$REPOS" in
   pgxntool-test)
-    monitor_one "$REPO_TEST" "$BRANCH" "$SHA_TEST" "$TIMEOUT_TEST" || exit_code=1
+    # Preserve monitor_one's exact code (2=TIMEOUT, 3=NO_RUNS), don't flatten to 1.
+    monitor_one "$REPO_TEST" "$BRANCH" "$SHA_TEST" "$TIMEOUT_TEST" \
+      || { r=$?; [[ $r -gt $exit_code ]] && exit_code=$r; }
     ;;
   pgxntool)
-    monitor_one "$REPO_PGXN" "$BRANCH" "$SHA_PGXN" "$TIMEOUT_PGXN" || exit_code=1
+    monitor_one "$REPO_PGXN" "$BRANCH" "$SHA_PGXN" "$TIMEOUT_PGXN" \
+      || { r=$?; [[ $r -gt $exit_code ]] && exit_code=$r; }
     ;;
   both|*)
     # Run both in parallel. Each writes to stdout (interleaved but prefixed with
@@ -214,6 +217,8 @@ if [[ $exit_code -eq 0 ]]; then
   echo "OVERALL: ALL_PASS"
 elif [[ $exit_code -eq 2 ]]; then
   echo "OVERALL: TIMEOUT"
+elif [[ $exit_code -eq 3 ]]; then
+  echo "OVERALL: NO_RUNS"
 else
   echo "OVERALL: FAIL"
 fi

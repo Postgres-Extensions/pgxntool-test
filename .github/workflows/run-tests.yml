@@ -1,5 +1,8 @@
 name: Run Tests
 
+permissions:
+  contents: read
+
 on:
   workflow_call:
     inputs:
@@ -17,6 +20,11 @@ jobs:
     name: 🐘 PostgreSQL ${{ matrix.pg }}
     runs-on: ubuntu-latest
     container: pgxn/pgxn-tools
+    # Caller-controlled inputs are exposed as env vars and referenced as $VARs
+    # in run: blocks below, never interpolated directly into the shell.
+    env:
+      PGXNTOOL_BRANCH: ${{ inputs.pgxntool-branch }}
+      PGXNTOOL_TEST_REF: ${{ inputs.pgxntool-test-ref }}
     strategy:
       matrix:
         pg: [17, 16, 15, 14, 13, 12]
@@ -31,11 +39,12 @@ jobs:
           # are easy to correlate to the right code. This is especially useful
           # when debugging cross-repo issues where the wrong branch was picked.
           # The === BRANCHES: === line is parsed by the CI monitor script.
-          echo "=== BRANCHES: pgxntool=${{ inputs.pgxntool-branch }} pgxntool-test=${{ inputs.pgxntool-test-ref }} ==="
+          echo "=== BRANCHES: pgxntool=${PGXNTOOL_BRANCH} pgxntool-test=${PGXNTOOL_TEST_REF} ==="
 
       - name: Check out pgxntool-test
         uses: actions/checkout@v4
         with:
+          persist-credentials: false
           repository: ${{ github.repository_owner }}/pgxntool-test
           ref: ${{ inputs.pgxntool-test-ref }}
           path: pgxntool-test
@@ -49,6 +58,7 @@ jobs:
       - name: Check out pgxntool
         uses: actions/checkout@v4
         with:
+          persist-credentials: false
           repository: ${{ github.repository_owner }}/pgxntool
           ref: ${{ inputs.pgxntool-branch }}
           path: pgxntool
@@ -78,7 +88,11 @@ jobs:
           # not a detached HEAD. -B force-creates the branch even if it already
           # exists (plain -b errors on existing branches).
           cd pgxntool
-          git checkout -B "${{ inputs.pgxntool-branch }}"
+          git check-ref-format --branch "$PGXNTOOL_BRANCH" >/dev/null 2>&1 || {
+            echo "Invalid branch name: $PGXNTOOL_BRANCH" >&2
+            exit 1
+          }
+          git checkout -B "$PGXNTOOL_BRANCH"
 
       - name: Install dependencies
         run: |
