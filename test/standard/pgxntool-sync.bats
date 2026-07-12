@@ -1,13 +1,22 @@
 #!/usr/bin/env bats
 
-# Test: make pgxntool-sync end-to-end
+# Test: pgxntool-sync end-to-end
 #
-# This test validates the full `make pgxntool-sync` flow:
+# This test validates the full pgxntool-sync flow:
 #   git subtree pull → update-setup-files.sh
+#
+# Both entry points are exercised:
+#   - the `make pgxntool-sync-<name>` target (variable-driven source)
+#   - running `pgxntool/pgxntool-sync.sh <repo> <branch>` directly, without make
 #
 # Unlike the unit tests in update-setup-files.bats (which test 3-way merge
 # scenarios in isolation), this test exercises the complete sync pipeline
-# including the Makefile target and git subtree pull mechanics.
+# including git subtree pull mechanics.
+#
+# Note: we always sync from a local source repo, never the real default remote.
+# The suite is offline, so the default remote/branch configured in
+# pgxntool-sync.sh is checked statically (see the default-source test) rather
+# than by pulling from the network.
 #
 # A dedicated source repo is needed because git subtree pull requires the
 # initial add to have been done via `git subtree add`. During normal test
@@ -46,6 +55,13 @@ setup_file() {
     git add _.gitignore
     git commit -m "Update gitignore"
     git tag v2
+
+    # A second marker at v3, used to exercise the standalone script path after
+    # the make path has already advanced the test repo to v2.
+    echo "# pgxntool-sync-test-marker-v3" >> _.gitignore
+    git add _.gitignore
+    git commit -m "Update gitignore again"
+    git tag v3
   )
 
   # =========================================================================
@@ -133,6 +149,62 @@ setup() {
   run git log --oneline -1
   assert_success
   assert_contains "$output" "Pull pgxntool from"
+}
+
+# Verify every predefined make target passes the right <repo> <ref> to the
+# script.
+#
+# `make -n` is dry-run mode: it fully evaluates the makefile (expanding
+# variables, the automatic $@, and the pgxntool-sync-% pattern rule) and prints
+# the exact commands it *would* run, but executes nothing. So we can check what
+# each target resolves to -- offline, with no git subtree pull -- and catch a
+# target wired to the wrong repo/ref. This is the class of bug that broke the
+# default originally (it resolved to a URL/owner that no longer works).
+# It does NOT prove the command succeeds; the direct-script test below covers
+# that a sync actually runs.
+@test "make sync targets wire to the expected repo and ref" {
+  local upstream="https://github.com/Postgres-Extensions/pgxntool.git"
+
+  # Each target prints exactly one command; match it in full. The bare target
+  # passes no args (the script supplies the default repo/ref itself).
+  run make -n pgxntool-sync
+  assert_success
+  [ "$output" = "pgxntool/pgxntool-sync.sh" ]
+
+  run make -n pgxntool-sync-master
+  assert_success
+  [ "$output" = "pgxntool/pgxntool-sync.sh $upstream master" ]
+
+  run make -n pgxntool-sync-local
+  assert_success
+  [ "$output" = "pgxntool/pgxntool-sync.sh ../pgxntool release" ]
+
+  run make -n pgxntool-sync-local-master
+  assert_success
+  [ "$output" = "pgxntool/pgxntool-sync.sh ../pgxntool master" ]
+
+  # The script's built-in default (used by bare `pgxntool-sync`) must be the
+  # canonical repo on the release tag, not the old decibel remote.
+  grep -q "Postgres-Extensions/pgxntool" pgxntool/pgxntool-sync.sh
+  ! grep -q "decibel/pgxntool" pgxntool/pgxntool-sync.sh
+}
+
+# The script must work without make, since that is the whole point of extracting
+# it from the Makefile recipe. This syncs v2 -> v3 by invoking the script
+# directly (the make tests above already advanced the repo to v2).
+@test "pgxntool-sync.sh can be run directly, without make" {
+  # A sync leaves the reconciled setup files modified but uncommitted, and
+  # git subtree pull refuses to run against a dirty tree. Committing between
+  # syncs is the normal workflow, so commit the v2 result before syncing v3.
+  git add -A
+  git commit -q -m "Commit v2 sync result"
+
+  run ./pgxntool/pgxntool-sync.sh "$SOURCE_REPO" v3
+  assert_success
+  assert_contains "$output" "Checking setup files for updates"
+
+  grep -q "pgxntool-sync-test-marker-v3" .gitignore
+  grep -q "pgxntool-sync-test-marker-v3" pgxntool/_.gitignore
 }
 
 # vi: expandtab sw=2 ts=2

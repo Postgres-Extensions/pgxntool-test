@@ -29,6 +29,14 @@ Create pull requests for pgxntool and pgxntool-test changes, following the two-r
 
 ---
 
+## PR Title Rules
+
+**CRITICAL: The title must contain only the most essential info about the change.**
+
+- **Never include the pgxntool PR number in a pgxntool-test PR title.** Cross-references belong in the body, not the title. The title should stand alone and describe the change itself.
+- Bad: `"Add tests for pgxntool PR #31 (fix results ordering, whitespace, overrides)"`
+- Good: `"Fix results ordering, control file whitespace, ENABLE_* overrides"`
+
 ## PR Description Guidelines
 
 **Think: "Someone in 2 years reading this in the commit log - what do they need to know?"**

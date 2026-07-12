@@ -113,6 +113,18 @@ EOF
 )"
 ```
 
+## After Pushing: Monitor CI
+
+After any `git push`, monitor GitHub Actions for failures:
+
+```bash
+gh run list --limit 5   # list recent runs
+gh run watch            # watch the latest run in real time
+gh run view <id>        # view a specific run's details
+```
+
+Check both repos if both were pushed. Report any CI failures to the user immediately — do not assume they are pre-existing or unrelated.
+
 ## Restrictions
 
 - DO NOT push unless explicitly asked
