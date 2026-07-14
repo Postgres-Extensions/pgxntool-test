@@ -257,4 +257,21 @@ setup() {
   assert_contains "$output" "Checking setup files for updates"
 }
 
+# pgxntool's own dev-only dirs (.github/, .claude/) are copied in by git subtree
+# but shouldn't live in a consuming project. update-setup-files.sh prunes them.
+@test "prunes pgxntool's dev-only .github after sync" {
+  local old_commit
+  old_commit=$(git log -1 --format=%H -- pgxntool/)
+
+  # Sanity: it's present before the sync (came in via subtree).
+  [ -e pgxntool/.github ]
+
+  run pgxntool/update-setup-files.sh "$old_commit"
+  assert_success
+  assert_contains "$output" "pruning"
+
+  # Pruned from the working tree, and the removal is staged.
+  [ ! -e pgxntool/.github ]
+}
+
 # vi: expandtab sw=2 ts=2
