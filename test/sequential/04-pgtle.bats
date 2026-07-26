@@ -255,6 +255,35 @@ teardown_file() {
   rm -f tab_test.control sql/tab_test--6.6.6.sql pg_tle/1.5.0+/tab_test.sql
 }
 
+@test "pgtle: stable pseudo-version alias is not rejected (issue #57)" {
+  # Some extensions use a persistent 'stable' pseudo-version pointing at the
+  # latest release (default_version = 'stable', with sql/<ext>--stable.sql
+  # and sql/<ext>--1.0.0--stable.sql). pg_tle treats extension versions as
+  # opaque strings (check_valid_version_name() in pg_tle's tleextension.c
+  # only forbids empty strings, "--", and leading/trailing "-" - no numeric
+  # requirement), so extract_version_from_filename() must not require
+  # version segments to start with a digit.
+
+  echo "default_version = 'stable'" > stable_test.control
+  echo "SELECT 1;" > sql/stable_test--1.0.0.sql
+  echo "SELECT 2;" > sql/stable_test--stable.sql
+  echo "-- upgrade to stable" > sql/stable_test--1.0.0--stable.sql
+
+  run "$TEST_REPO/pgxntool/pgtle.sh" --extension stable_test --pgtle-version 1.5.0+
+  assert_success
+  assert_file_exists "pg_tle/1.5.0+/stable_test.sql"
+
+  local file="pg_tle/1.5.0+/stable_test.sql"
+  grep -q "'1.0.0'" "$file"                              # numeric version still recognized
+  grep -q "'stable'" "$file"                             # non-numeric version accepted
+  grep -q "pgtle.install_update_path" "$file"             # upgrade path to 'stable' generated
+  grep -q "pgtle.set_default_version('stable_test', 'stable')" "$file"
+
+  # Cleanup
+  rm -f stable_test.control sql/stable_test--1.0.0.sql sql/stable_test--stable.sql \
+        sql/stable_test--1.0.0--stable.sql pg_tle/1.5.0+/stable_test.sql
+}
+
 @test "pgtle: warning on module_pathname in control" {
   # Create a C extension control file
   echo "comment = 'C extension'" > cext.control
