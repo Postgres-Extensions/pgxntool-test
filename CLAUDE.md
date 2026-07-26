@@ -42,6 +42,10 @@ adding commits, modifying PR descriptions, or any other PR-level action.
 
 **NEVER apply or remove the `commit-with-no-tests` label (or any similarly maintainer-gated label) on pgxntool PRs, even if the authenticated account has admin/write access that makes it technically possible.** `protect-label.yml` restricts this label to maintainers by design — having the technical ability to set it does not make it your call. If a PR looks like it genuinely needs no paired test PR, say so explicitly and let a human apply the label.
 
+## Executable Bit Safety
+
+`sed -i` (and similar in-place file-rewriting tools) can silently drop a file's executable bit -- this has caused real regressions in this repo (a script losing its `+x` bit cascaded into a wide swath of unrelated-looking test failures before the actual cause was found). After using `sed -i` or similar on any file, check `git diff --summary` for a `100755 => 100644` mode change and restore `chmod +x` before doing anything else with it.
+
 ## Using Subagents
 
 **CRITICAL**: Always use ALL available subagents. Subagents are domain experts that provide specialized knowledge and should be consulted for their areas of expertise.
