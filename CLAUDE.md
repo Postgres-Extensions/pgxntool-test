@@ -38,6 +38,10 @@ adding commits, modifying PR descriptions, or any other PR-level action.
 
 **IMPORTANT**: When creating commit messages, do not attribute commits to yourself (Claude). Commit messages should reflect the work being done without AI attribution in the message body. The standard Co-Authored-By trailer is acceptable.
 
+## Maintainer-Gated Labels
+
+**NEVER apply or remove the `commit-with-no-tests` label (or any similarly maintainer-gated label) on pgxntool PRs, even if the authenticated account has admin/write access that makes it technically possible.** `protect-label.yml` restricts this label to maintainers by design — having the technical ability to set it does not make it your call. If a PR looks like it genuinely needs no paired test PR, say so explicitly and let a human apply the label.
+
 ## Using Subagents
 
 **CRITICAL**: Always use ALL available subagents. Subagents are domain experts that provide specialized knowledge and should be consulted for their areas of expertise.
