@@ -39,7 +39,7 @@ jobs:
       PGXNTOOL_TEST_REF: ${{ inputs.pgxntool-test-ref }}
     strategy:
       matrix:
-        pg: [17, 16, 15, 14, 13, 12]
+        pg: [18, 17, 16, 15, 14, 13, 12]
 
     steps:
       - name: Start PostgreSQL ${{ matrix.pg }}

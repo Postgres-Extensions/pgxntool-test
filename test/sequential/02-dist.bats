@@ -77,7 +77,7 @@ teardown_file() {
   # and generates versioned SQL files, not just META.json.
   #
   # This is critical because:
-  # 1. The 'all' target depends on $(EXTENSION_VERSION_FILES) - versioned SQL like sql/ext--1.0.sql
+  # 1. The 'all' target depends on $(EXTENSION__CURRENT_VERSION__FILES) - versioned SQL like sql/ext--1.0.sql
   # 2. These versioned SQL files are required for PostgreSQL to load the extension
   # 3. If 'make' only generated META.json, the extension would be unusable
 

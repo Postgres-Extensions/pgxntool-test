@@ -63,6 +63,8 @@ Create pull requests for pgxntool and pgxntool-test changes, following the two-r
 
 **Don't over-explain** - If the reason is obvious, don't state it.
 
+**No Testing/Test plan section by default** - The standard is to rely on CI. Only add one when something needs verification CI won't cover (e.g. a manual step, a live trigger that can't run in CI, an explicit known limitation).
+
 **Tone reference:** See HISTORY.asc for style (outcome-focused, concise). PRs should be more detailed than changelog entries.
 
 ---
