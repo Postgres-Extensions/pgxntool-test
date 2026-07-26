@@ -52,9 +52,25 @@ teardown_file() {
   [ -f "pg_tle/1.5.0+/pgxntool-test.sql" ]
 }
 
+@test "pgtle: make pgtle PGTLE_VERSION=X limits output to specified version (issue #65)" {
+  # base.mk's pgtle target must forward the PGTLE_VERSION make variable
+  # through to pgtle.sh's --pgtle-version flag. It previously did not,
+  # so `make pgtle PGTLE_VERSION=1.5.0+` silently generated all three
+  # version ranges instead of just the requested one.
+  run rm -rf pg_tle
+  assert_success
+
+  run make pgtle PGTLE_VERSION=1.5.0+
+  assert_success
+
+  [ -f "pg_tle/1.5.0+/pgxntool-test.sql" ]
+  [ ! -f "pg_tle/1.0.0-1.4.0/pgxntool-test.sql" ]
+  [ ! -f "pg_tle/1.4.0-1.5.0/pgxntool-test.sql" ]
+}
+
 @test "pgtle: --pgtle-version limits output to specific version" {
-  # Note: The Makefile always generates all versions. This test verifies
-  # that the script's --pgtle-version flag works correctly when called directly.
+  # Verifies the script's --pgtle-version flag works correctly when called
+  # directly (independent of the Makefile's PGTLE_VERSION wiring above).
   run rm -rf pg_tle
   assert_success
 
