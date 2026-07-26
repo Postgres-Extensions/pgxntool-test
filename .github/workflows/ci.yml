@@ -42,7 +42,11 @@ jobs:
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
-          files=$(gh api "repos/$REPO/pulls/$PR_NUMBER/files" --paginate --jq '.[].filename')
+          # Include previous_filename too: a rename like src/foo.sql ->
+          # docs/foo.md must not read as doc-only just because the new name
+          # matches — the old path is a real code change.
+          files=$(gh api "repos/$REPO/pulls/$PR_NUMBER/files" --paginate \
+            --jq '.[] | .filename, (.previous_filename // empty)')
           doc_only=true
           [ -z "$files" ] && doc_only=false
           while IFS= read -r f; do
