@@ -2,6 +2,7 @@ name: CI
 
 permissions:
   contents: read        # required by actions/checkout in the reusable test workflow
+  pull-requests: read   # list changed files for the doc-only check
 
 concurrency:
   group: ci-pr-${{ github.event.pull_request.number }}
@@ -22,8 +23,40 @@ jobs:
     outputs:
       pgxntool-ref: ${{ steps.pgxntool-ref.outputs.ref }}
       pgxntool-owner: ${{ steps.pgxntool-ref.outputs.owner }}
+      doc-only: ${{ steps.doc-only.outputs.doc-only }}
 
     steps:
+      # DOC-ONLY BYPASS: skip the Postgres test matrix (the `test` job below)
+      # when every changed file is pure documentation. Files under .github/
+      # are never doc-only even if their extension matches (they're workflow
+      # definitions with real behavioral weight). Everything else — including
+      # .claude/*.md prompt and command docs, which carry no execution weight
+      # themselves — counts.
+      #
+      # This does NOT affect claude-review: that's a separate workflow gated
+      # by its own `if:`, unaffected by this job's outputs.
+      - name: Check doc-only
+        id: doc-only
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          files=$(gh api "repos/$REPO/pulls/$PR_NUMBER/files" --paginate --jq '.[].filename')
+          doc_only=true
+          [ -z "$files" ] && doc_only=false
+          while IFS= read -r f; do
+            case "$f" in
+              .github/*) doc_only=false ;;
+              *.md|*.asc|*.adoc|*.asciidoc) ;;
+              *) doc_only=false ;;
+            esac
+          done <<<"$files"
+          echo "doc-only=$doc_only" >> "$GITHUB_OUTPUT"
+          echo "doc-only: $doc_only"
+          echo "changed files:"
+          echo "$files"
+
       - name: Resolve pgxntool branch
         id: pgxntool-ref
         # PR-controlled values (head_ref, head owner) are passed via env, never
@@ -72,6 +105,7 @@ jobs:
 
   test:
     needs: resolve
+    if: needs.resolve.outputs.doc-only != 'true'
     # run-tests.yml is the single source of truth for all test steps.
     # See .github/workflows/CLAUDE.md for architecture notes, including
     # the cross-repo reusable workflow tradeoffs and merge order constraints.
