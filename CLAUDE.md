@@ -38,6 +38,16 @@ adding commits, modifying PR descriptions, or any other PR-level action.
 
 **IMPORTANT**: When creating commit messages, do not attribute commits to yourself (Claude). Commit messages should reflect the work being done without AI attribution in the message body. The standard Co-Authored-By trailer is acceptable.
 
+## PR-Based Workflow: Merges Happen Outside AI Control
+
+**This project uses a GitHub PR workflow, not direct commits to master.** The `/commit` skill's two-phase cross-reference process (commit pgxntool, capture its hash, commit pgxntool-test referencing it) was designed for an earlier direct-commit era and still applies to *composing a PR branch's own commits* before merge — but actually merging a PR happens via the GitHub website, by the user, outside AI control. Claude never commits directly to master and does not control when or how a PR lands.
+
+Because of that, whether a paired PR's cross-reference actually made it onto master can only be verified *after the fact*, once both sides are already merged — see `crossref-audit` below.
+
+### Session Startup: Check for Missing Cross-References
+
+**At the start of a session working in pgxntool or pgxntool-test, and before rebasing any branch onto a fresh master fetch**, use the `crossref-audit` skill to check whether commits on master since the last release tag are missing their cross-reference to the paired commit in the other repo. Follow that skill's rules exactly, especially around when it is and isn't safe to amend an already-merged commit.
+
 ## Using Subagents
 
 **CRITICAL**: Always use ALL available subagents. Subagents are domain experts that provide specialized knowledge and should be consulted for their areas of expertise.
@@ -61,6 +71,7 @@ These subagents are already available in your context - you don't need to discov
 
 The `/commit` skill lives in `.claude/skills/commit/` with a preprocessing script and format guide.
 The `/test` skill lives in `.claude/skills/test/` with a TAP-parsing test runner.
+The `/crossref-audit` skill lives in `.claude/skills/crossref-audit/` — audits master in both repos for paired commits missing a cross-reference to each other (see "PR-Based Workflow" above).
 Other commands (worktree, pr, pgxntool-update) remain in `.claude/commands/`.
 
 ## What This Repo Is
