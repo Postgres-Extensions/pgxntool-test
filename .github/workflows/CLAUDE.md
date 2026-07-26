@@ -78,6 +78,21 @@ The safe approach is to coordinate the merge order explicitly with the user.
 
 ## Expanding the matrix
 
-The PostgreSQL version matrix (`pg: [17, 16, 15, 14, 13, 12]`) is hardcoded in
+The PostgreSQL version matrix (`pg: [18, 17, 16, 15, 14, 13, 12]`) is hardcoded in
 `run-tests.yml`. GitHub Actions does not support passing a matrix as a workflow_call
 input. To add or remove a PG version, edit `run-tests.yml` directly.
+
+## Doc-only bypass
+
+Both repos' CI skip the Postgres test matrix (not just the paired-PR requirement)
+when every changed file in a PR is pure documentation — extension `*.md`, `*.asc`,
+`*.adoc`, `*.asciidoc`, anywhere including under `.claude/`, but never under
+`.github/` (workflow definitions carry real behavioral weight regardless of
+extension). `claude-review` is a separate workflow gated by its own `if:` and
+always still runs.
+
+- **pgxntool**: `check-test-pr` in `ci.yml` checks this first, before the
+  paired-test-PR lookup — a doc-only PR needs neither a paired branch nor the
+  `commit-with-no-tests` label.
+- **pgxntool-test**: the `resolve` job's `doc-only` output gates the `test` job
+  directly.
