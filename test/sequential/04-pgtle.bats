@@ -52,7 +52,7 @@ teardown_file() {
   [ -f "pg_tle/1.5.0+/pgxntool-test.sql" ]
 }
 
-@test "pgtle: make pgtle PGTLE_VERSION=X limits output to specific version (issue #65)" {
+@test "pgtle: make pgtle PGTLE_VERSION=X limits output to specified version (issue #65)" {
   # base.mk's pgtle target must forward the PGTLE_VERSION make variable
   # through to pgtle.sh's --pgtle-version flag. It previously did not,
   # so `make pgtle PGTLE_VERSION=1.5.0+` silently generated all three
