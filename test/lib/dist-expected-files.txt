@@ -68,6 +68,7 @@ pgxntool/_.gitignore
 pgxntool/.gitignore
 pgxntool/base.mk
 pgxntool/build_meta.sh
+pgxntool/check-stale-expected.sh
 pgxntool/JSON.sh
 pgxntool/JSON.sh.LICENSE
 pgxntool/LICENSE
