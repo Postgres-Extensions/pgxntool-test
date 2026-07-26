@@ -6,9 +6,10 @@ description: |
   cross-reference to each other. Fixes safely when it's a single, recent,
   tip-of-master commit; otherwise stops and asks.
 
-  Use when: starting a session in this project, before rebasing a branch
-  onto a fresh master fetch, or when asked to check/audit cross-references.
-allowed-tools: Bash(git:*), Bash(gh:*), Read
+  Use when: at the end of each round of work in this project (not just
+  session start — sessions run long), before rebasing a branch onto a fresh
+  master fetch, or when asked to check/audit cross-references.
+allowed-tools: Bash(git:*), Bash(gh:*), Bash(bash .claude/skills/crossref-audit/scripts/audit.sh:*), Read
 ---
 
 # /crossref-audit
@@ -25,21 +26,27 @@ caught *after the fact* by auditing what actually landed on master. This is
 a different problem from `/commit`, which only covers composing a PR
 branch's own commits *before* merge.
 
-## Step 1: Find the audit window
+## Running it cheaply, every round
 
-For each repo, find the most recent non-`release` version tag and list
-commits on master since it:
+Run `bash .claude/skills/crossref-audit/scripts/audit.sh <pgxntool-dir> <pgxntool-test-dir>`.
+This does steps 1 and most of step 3 below as a plain script — no LLM
+tokens — and caches the last-checked master SHAs in
+`/tmp/pgxntool-crossref-audit-state`, updated only on a clean result. That
+means most rounds cost nothing more than reading one line of output:
 
-```bash
-git fetch upstream --tags
-LAST_TAG=$(git tag --sort=-creatordate | grep -vi release | head -1)
-git log --oneline "$LAST_TAG"..upstream/master
-```
+- `crossref-audit: no new commits on either master since last clean check.` — done, nothing to interpret
+- `crossref-audit: clean. Checked N / M commit(s)...` — done
+- `crossref-audit: FLAGGED -- ...` — read the flagged list and apply the judgment in Step 2/Step 4 below
 
-**Never consider commits at or before this tag in scope.** Anything already
-part of a release is out of bounds for this audit no matter what you find.
+A flagged result is a heuristic, not a verdict — the script correlates
+commits via the "(issue #N)" phrasing this project's commits use for
+cross-repo issue references (not bare "(#N)", which is usually just the
+local PR number), and only checks for the *presence* of a plausible
+hash/URL pattern. It can both over-flag (a real pairing that already has a
+reference in an unusual phrasing) and under-flag (a pairing it didn't
+correlate). Treat "clean" as "nothing obviously wrong", not a guarantee.
 
-## Step 2: Identify genuinely paired commits
+## Step 2: Identify genuinely paired commits (only needed when something is flagged, or you're doing a manual review)
 
 Not every commit needs a cross-reference. It's only expected when a commit
 in one repo is a *functional* code+test pairing with a commit in the
@@ -53,7 +60,7 @@ for it. It is NOT expected for:
 Use issue numbers, PR descriptions, and commit content to judge whether a
 pairing is real. When genuinely unsure, ask the user rather than guessing.
 
-## Step 3: Check for a cross-reference
+## Step 3: Check for a cross-reference (the script does this automatically; use this if reviewing manually)
 
 For each side of a genuine pairing, confirm the commit message references
 the other repo — either a raw commit hash or (preferred, per the

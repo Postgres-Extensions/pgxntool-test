@@ -52,9 +52,9 @@ adding commits, modifying PR descriptions, or any other PR-level action.
 
 Because of that, whether a paired PR's cross-reference actually made it onto master can only be verified *after the fact*, once both sides are already merged — see `crossref-audit` below.
 
-### Session Startup: Check for Missing Cross-References
+### End of Each Round: Check for Missing Cross-References
 
-**At the start of a session working in pgxntool or pgxntool-test, and before rebasing any branch onto a fresh master fetch**, use the `crossref-audit` skill to check whether commits on master since the last release tag are missing their cross-reference to the paired commit in the other repo. Follow that skill's rules exactly, especially around when it is and isn't safe to amend an already-merged commit.
+**At the end of each round of work in pgxntool or pgxntool-test (not just once at session start — sessions here run long), and before rebasing any branch onto a fresh master fetch**, run the `crossref-audit` skill's script: `bash .claude/skills/crossref-audit/scripts/audit.sh <pgxntool-dir> <pgxntool-test-dir>`. It fetches both masters, caches the last-checked SHAs, and exits immediately with a one-line "nothing new" if neither has moved since the last clean check — so repeating it every round costs near-zero tokens in the common case. Only read further into the skill's rules if it reports something flagged; follow those rules exactly, especially around when it is and isn't safe to amend an already-merged commit.
 
 ## Using Subagents
 
