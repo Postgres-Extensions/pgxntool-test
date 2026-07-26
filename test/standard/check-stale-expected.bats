@@ -17,6 +17,11 @@
 # (see /root/git/pg_tle/test/expected/), and pgtap/pglogical/count_nulls use
 # the same _N.out convention. This was the exact false positive caught in
 # review before this fix landed, and is tested explicitly below.
+#
+# It also fails (distinctly, exit code 2 vs 1) if expected/ contains any
+# file that isn't *.out -- disable-able on its own via
+# PGXNTOOL_CHECK_EXPECTED_FILE_TYPES=no, independent of disabling the
+# whole check via PGXNTOOL_ENABLE_CHECK_STALE_EXPECTED=no.
 
 load ../lib/helpers
 
@@ -43,7 +48,16 @@ setup() {
   assert_success
 
   local pg_regress_line check_line
-  pg_regress_line=$(echo "$output" | grep -n "pg_regress " | tail -1 | cut -d: -f1)
+  # Exclude test-build's own (unrelated) pg_regress invocation, identified
+  # by its --outputdir=test/build. test-build has no dependency relationship
+  # with check-stale-expected -- position in TEST_DEPS is not an ordering
+  # guarantee (see comment above) -- so depending on where test-build lands
+  # in TEST_DEPS, its recipe can print before or after check-stale-expected's
+  # in this dry-run, which would make a plain "last pg_regress mention"
+  # search pick up the wrong invocation. Filtering it out leaves only the
+  # main suite's pg_regress call, whose ordering relative to
+  # check-stale-expected IS guaranteed (by the explicit dependency edge).
+  pg_regress_line=$(echo "$output" | grep -n "pg_regress " | grep -v -- '--outputdir=test/build' | tail -1 | cut -d: -f1)
   check_line=$(echo "$output" | grep -n "check-stale-expected.sh" | head -1 | cut -d: -f1)
 
   [ -n "$pg_regress_line" ] || error "no pg_regress invocation found in 'make -n test' output"
@@ -132,6 +146,36 @@ setup() {
   assert_success
 
   rm -f test/build/expected/build_check_1.out
+}
+
+@test "check-stale-expected fails with a distinct message/exit code for a non-.out file in expected/" {
+  touch test/expected/stray.txt
+
+  # Invoke the script directly rather than through 'make': make's own exit
+  # status on any recipe failure is always 2 regardless of the underlying
+  # command's exit code, so verifying the script's own distinct exit codes
+  # (1 = orphaned .out, 2 = unexpected non-.out file, 3 = both) requires
+  # calling it directly.
+  run pgxntool/test/bin/check-stale-expected.sh test
+  assert_failure_with_status 2
+  assert_contains "$output" "unexpected non-.out file"
+  assert_contains "$output" "stray.txt"
+
+  # 'make check-stale-expected' should still surface the same message.
+  run make check-stale-expected
+  assert_failure
+  assert_contains "$output" "unexpected non-.out file"
+
+  rm -f test/expected/stray.txt
+}
+
+@test "PGXNTOOL_CHECK_EXPECTED_FILE_TYPES=no disables the non-.out file sub-check" {
+  touch test/expected/stray.txt
+
+  run make check-stale-expected PGXNTOOL_CHECK_EXPECTED_FILE_TYPES=no
+  assert_success
+
+  rm -f test/expected/stray.txt
 }
 
 # vi: expandtab sw=2 ts=2

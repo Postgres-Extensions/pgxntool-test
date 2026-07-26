@@ -68,7 +68,6 @@ pgxntool/_.gitignore
 pgxntool/.gitignore
 pgxntool/base.mk
 pgxntool/build_meta.sh
-pgxntool/check-stale-expected.sh
 pgxntool/JSON.sh
 pgxntool/JSON.sh.LICENSE
 pgxntool/LICENSE
@@ -87,6 +86,8 @@ pgxntool/WHAT_IS_THIS
 
 # pgxntool test infrastructure
 pgxntool/test/
+pgxntool/test/bin/
+pgxntool/test/bin/check-stale-expected.sh
 pgxntool/test/deps.sql
 pgxntool/test/pgxntool/
 pgxntool/test/pgxntool/finish.sql
