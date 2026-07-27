@@ -46,6 +46,16 @@ adding commits, modifying PR descriptions, or any other PR-level action.
 
 `sed -i` (and similar in-place file-rewriting tools) can silently drop a file's executable bit -- this has caused real regressions in this repo (a script losing its `+x` bit cascaded into a wide swath of unrelated-looking test failures before the actual cause was found). After using `sed -i` or similar on any file, check `git diff --summary` for a `100755 => 100644` mode change and restore `chmod +x` before doing anything else with it.
 
+## PR-Based Workflow: Merges Happen Outside AI Control
+
+**This project uses a GitHub PR workflow, not direct commits to master.** The `/commit` skill's two-phase cross-reference process (commit pgxntool, capture its hash, commit pgxntool-test referencing it) was designed for an earlier direct-commit era and still applies to *composing a PR branch's own commits* before merge — but actually merging a PR happens via the GitHub website, by the user, outside AI control. Claude never commits directly to master and does not control when or how a PR lands, with one narrow, safety-gated exception: `crossref-audit`'s Step 4 may amend and force-push a single tip-of-master commit to add a missing cross-reference, under the specific conditions documented there (never more than one commit, never at or before the last release tag, content-diff verified empty before pushing).
+
+Because of that, whether a paired PR's cross-reference actually made it onto master can only be verified *after the fact*, once both sides are already merged — see `crossref-audit` below.
+
+### End of Each Round: Check for Missing Cross-References
+
+**At the end of each round of work in pgxntool or pgxntool-test (not just once at session start — sessions here run long), and before rebasing any branch onto a fresh master fetch**, run the `crossref-audit` skill's script: `bash .claude/skills/crossref-audit/scripts/audit.sh <pgxntool-dir> <pgxntool-test-dir>`. It fetches both masters, caches the last-checked SHAs, and exits immediately with a one-line "nothing new" if neither has moved since the last clean check — so repeating it every round costs near-zero tokens in the common case. Only read further into the skill's rules if it reports something flagged; follow those rules exactly, especially around when it is and isn't safe to amend an already-merged commit.
+
 ## Using Subagents
 
 **CRITICAL**: Always use ALL available subagents. Subagents are domain experts that provide specialized knowledge and should be consulted for their areas of expertise.
@@ -69,6 +79,7 @@ These subagents are already available in your context - you don't need to discov
 
 The `/commit` skill lives in `.claude/skills/commit/` with a preprocessing script and format guide.
 The `/test` skill lives in `.claude/skills/test/` with a TAP-parsing test runner.
+The `/crossref-audit` skill lives in `.claude/skills/crossref-audit/` — audits master in both repos for paired commits missing a cross-reference to each other (see "PR-Based Workflow" above).
 Other commands (worktree, pr, pgxntool-update) remain in `.claude/commands/`.
 
 ## What This Repo Is

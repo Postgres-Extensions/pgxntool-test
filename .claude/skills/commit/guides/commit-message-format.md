@@ -47,6 +47,8 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 ```
 
 - Use placeholder `[PGXNTOOL_COMMIT_HASH]` (replaced with actual hash during execution)
+- **A direct GitHub URL to the pgxntool PR or commit (e.g. `https://github.com/Postgres-Extensions/pgxntool/pull/63`) is an acceptable, and preferred, substitute for a raw commit hash.** A PR link stays valid even if the referenced commit is later rebased or amended (its hash changes, but the PR URL doesn't); a bare hash embedded in already-committed text goes stale silently in that case. Prefer linking the PR once one exists.
+- If a raw hash was used and the referenced pgxntool commit is later rebased/amended (changing its hash) before your pgxntool-test PR merges, update the reference to the new hash before merging. This only matters pre-merge — once a commit has landed on master, don't rewrite it to fix a stale reference without explicit instruction from the user; rewriting shared history on a protected branch is a different (and much riskier) class of action than amending your own open PR branch.
 - Include brief summary (2-3 bullets) of pgxntool changes near top
 - Wrap code references in backticks
 
