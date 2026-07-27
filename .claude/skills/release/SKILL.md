@@ -19,27 +19,28 @@ Create a release for pgxntool and pgxntool-test.
 - **STABLE section**: The heading in `HISTORY.asc` where unreleased changes are documented. During a release, this heading is replaced with the version number. This has nothing to do with git branches.
 - **UPSTREAM_REMOTE**: The local git remote pointing to the main project repos at `https://github.com/Postgres-Extensions/`. Releases must be pushed here -- never to a fork. The remote name varies; it is identified by URL pattern in the pre-flight script.
 - **User-facing API surface**: what the Step 2 review agents treat as "the
-  documented API" of pgxntool. This is a working definition and is expected
-  to evolve — when a reviewer hits a case that doesn't clearly fit, flag it
-  for the user rather than guessing:
-  - Every make target pgxntool defines. Discover the authoritative list
-    with `make list` (a target pgxntool itself provides, see `base.mk`) run
-    against pgxntool's own makefiles — e.g. from a scratch directory
-    containing nothing but a `Makefile` with `include <path-to-pgxntool>/base.mk`
-    — rather than grepping for target definitions, since pattern rules and
-    generated targets are easy to miss that way. `make list` also returns
-    targets pgxntool merely inherits from PGXS (`install`, `installcheck`,
-    `submake-*`, etc.); cross-reference against pgxntool's own `.mk`/`.mk.sh`
-    files to exclude those — they're not pgxntool's API.
-  - Target prerequisites worth documenting by name even when not invoked
-    directly (e.g. `testdeps`), since extension authors may reference or
-    override them.
-  - Every variable prefixed `PGXNTOOL_` (grep for it across the whole tree).
-  - Scripts a user is realistically expected to invoke by hand:
-    `setup.sh`, `pgxntool-sync.sh`, `update-setup-files.sh`, and `pgtle.sh`.
-  - Everything else (e.g. `JSON.sh`, `lib.sh`, `safesed`, `build_meta.sh`,
-    `run-test-build.sh`, `verify-results-pgtap.sh`) is internal by default
-    unless there's a specific indication otherwise.
+  documented API" of pgxntool. The canonical, evolving definition lives in
+  this repo's own `CLAUDE.md`, under "User-Facing API Surface of pgxntool"
+  (not `../pgxntool/CLAUDE.md` — that file is user-facing docs for
+  extension developers, not dev/audit tooling docs). Read that section
+  fresh before launching the Step 2 agents and give them its current text
+  verbatim as their scope, since it's expected to change over time. When a
+  reviewer hits a case that doesn't clearly fit, flag it for the user
+  rather than guessing, and consider updating that section afterward.
+- **Discovering make targets**: the definition's target list should be
+  found with `make list` (a target pgxntool itself provides — see
+  `base.mk`), not by grepping for target definitions, since pattern rules
+  and generated targets are easy to miss that way. Run it from a scratch
+  directory containing nothing but a `Makefile` with
+  `include <path-to-pgxntool>/base.mk`. Two things to watch for:
+  - The output includes harmless noise from make's own recursive-submake
+    chatter (literal lines `Makefile`, `make[1]`, etc.) — filter these out,
+    they aren't real targets.
+  - Targets gated behind `ifeq`/`ifdef` conditionals that depend on files
+    not present in a bare scratch directory (e.g. `test-build`,
+    `clean-test-build`, which only appear when `test/build/*.sql` or
+    `test/install/*.sql` exist) won't show up this way. Read `base.mk`
+    directly for these rather than relying on `make list` alone.
 
 ---
 
@@ -87,7 +88,10 @@ every agent concrete file paths, not a vague "review the code" instruction.
 
 - Scope: commits in `../pgxntool` between the `release` tag and `HEAD`
   (`git log release..HEAD`, `git diff release..HEAD`), restricted to changes
-  that touch the user-facing API surface (see Terminology).
+  that touch the user-facing API surface (see Terminology). **Commit
+  titles are not a reliable filter** — a commit can touch API-surface
+  behavior without saying so in its subject line. Always check the actual
+  file-level diff, don't just scan `git log --oneline`.
 - For every such change, compare against:
   - `../pgxntool/HISTORY.asc` STABLE section — is the behavior change called
     out there?
