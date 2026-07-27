@@ -48,7 +48,7 @@ adding commits, modifying PR descriptions, or any other PR-level action.
 
 ## PR-Based Workflow: Merges Happen Outside AI Control
 
-**This project uses a GitHub PR workflow, not direct commits to master.** The `/commit` skill's two-phase cross-reference process (commit pgxntool, capture its hash, commit pgxntool-test referencing it) was designed for an earlier direct-commit era and still applies to *composing a PR branch's own commits* before merge — but actually merging a PR happens via the GitHub website, by the user, outside AI control. Claude never commits directly to master and does not control when or how a PR lands.
+**This project uses a GitHub PR workflow, not direct commits to master.** The `/commit` skill's two-phase cross-reference process (commit pgxntool, capture its hash, commit pgxntool-test referencing it) was designed for an earlier direct-commit era and still applies to *composing a PR branch's own commits* before merge — but actually merging a PR happens via the GitHub website, by the user, outside AI control. Claude never commits directly to master and does not control when or how a PR lands, with one narrow, safety-gated exception: `crossref-audit`'s Step 4 may amend and force-push a single tip-of-master commit to add a missing cross-reference, under the specific conditions documented there (never more than one commit, never at or before the last release tag, content-diff verified empty before pushing).
 
 Because of that, whether a paired PR's cross-reference actually made it onto master can only be verified *after the fact*, once both sides are already merged — see `crossref-audit` below.
 

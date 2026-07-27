@@ -43,6 +43,10 @@ git -C "$PGXNTOOL_TEST_DIR" fetch upstream master --tags -q
 PGXN_HEAD=$(git -C "$PGXNTOOL_DIR" rev-parse upstream/master)
 TEST_HEAD=$(git -C "$PGXNTOOL_TEST_DIR" rev-parse upstream/master)
 
+# Derive the org/repo path from the configured remote rather than hardcoding
+# it, so this keeps working under a fork or rename.
+PGXN_REPO_PATH=$(git -C "$PGXNTOOL_DIR" remote get-url upstream | sed -E 's#^(https://github\.com/|git@github\.com:)##; s#\.git$##')
+
 if [ -f "$STATE_FILE" ]; then
   read -r LAST_PGXN LAST_TEST < "$STATE_FILE" || true
   if [ "${LAST_PGXN:-}" = "$PGXN_HEAD" ] && [ "${LAST_TEST:-}" = "$TEST_HEAD" ]; then
@@ -57,6 +61,14 @@ last_release_tag() {
 
 PGXN_TAG=$(last_release_tag "$PGXNTOOL_DIR")
 TEST_TAG=$(last_release_tag "$PGXNTOOL_TEST_DIR")
+
+# An empty tag would make "$TAG"..upstream/master collapse to plain
+# ..upstream/master, which git quietly reinterprets as HEAD..upstream/master
+# instead of the intended unbounded range.
+if [ -z "$PGXN_TAG" ] || [ -z "$TEST_TAG" ]; then
+  echo "ERROR: no release tag found in one or both repos" >&2
+  exit 2
+fi
 
 pgxn_commits=$(git -C "$PGXNTOOL_DIR" log --format='%H %s' "$PGXN_TAG"..upstream/master)
 test_commits=$(git -C "$PGXNTOOL_TEST_DIR" log --format='%H %s' "$TEST_TAG"..upstream/master)
@@ -97,10 +109,12 @@ while IFS= read -r line; do
       flagged=1
     fi
 
-    test_sha=$(awk -v i="issue #$issue" 'BEGIN{IGNORECASE=1} $0 ~ i {print $1; exit}' <<<"$test_commits")
+    # Reuse $match (already bounded to "issue #$issue" exactly, not a numeric
+    # prefix of it) rather than re-deriving test_sha with a looser pattern.
+    test_sha=$(head -1 <<<"$match" | cut -d' ' -f1)
     if [ -n "$test_sha" ]; then
       test_body=$(git -C "$PGXNTOOL_TEST_DIR" log -1 --format='%b' "$test_sha")
-      if ! grep -qiE '[0-9a-f]{7,40}|github\.com/Postgres-Extensions/pgxntool/(pull|commit)/' <<<"$test_body"; then
+      if ! grep -qiE "[0-9a-f]{7,40}|github\.com/${PGXN_REPO_PATH}/(pull|commit)/" <<<"$test_body"; then
         report+=$'\n'"  PGXNTOOL-TEST $test_sha (issue #$issue): no hash or pgxntool PR/commit URL found in body"
         flagged=1
       fi
