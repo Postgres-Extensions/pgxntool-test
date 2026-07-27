@@ -22,10 +22,15 @@ Create a release for pgxntool and pgxntool-test.
   documented API" of pgxntool. This is a working definition and is expected
   to evolve — when a reviewer hits a case that doesn't clearly fit, flag it
   for the user rather than guessing:
-  - Every make target pgxntool defines (discover these, don't assume a
-    fixed file list — grep target definitions across `base.mk`,
-    `control.mk.sh`, `meta.mk.sh`, and any other `.mk`/`.mk.sh` files in
-    pgxntool).
+  - Every make target pgxntool defines. Discover the authoritative list
+    with `make list` (a target pgxntool itself provides, see `base.mk`) run
+    against pgxntool's own makefiles — e.g. from a scratch directory
+    containing nothing but a `Makefile` with `include <path-to-pgxntool>/base.mk`
+    — rather than grepping for target definitions, since pattern rules and
+    generated targets are easy to miss that way. `make list` also returns
+    targets pgxntool merely inherits from PGXS (`install`, `installcheck`,
+    `submake-*`, etc.); cross-reference against pgxntool's own `.mk`/`.mk.sh`
+    files to exclude those — they're not pgxntool's API.
   - Target prerequisites worth documenting by name even when not invoked
     directly (e.g. `testdeps`), since extension authors may reference or
     override them.
