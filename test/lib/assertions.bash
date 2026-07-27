@@ -139,16 +139,31 @@ assert_repo_clean() {
 
 # String Assertions
 
+# Assert that haystack contains needle as a literal substring
+# Usage: assert_contains "$output" "expected substring"
+# Shows the haystack and needle on failure, matching the diagnostic quality
+# of assert_success/assert_failure above (bare exit status alone gives no
+# clue what was actually being compared).
 assert_contains() {
   local haystack=$1
   local needle=$2
-  echo "$haystack" | grep -qF "$needle"
+  if ! echo "$haystack" | grep -qF "$needle"; then
+    out "Expected to find: $needle"
+    out "In: $haystack"
+    error "assert_contains failed (see above)"
+  fi
 }
 
+# Assert that haystack does NOT contain needle as a literal substring
+# Usage: assert_not_contains "$output" "unexpected substring"
 assert_not_contains() {
   local haystack=$1
   local needle=$2
-  ! echo "$haystack" | grep -qF "$needle"
+  if echo "$haystack" | grep -qF "$needle"; then
+    out "Expected NOT to find: $needle"
+    out "In: $haystack"
+    error "assert_not_contains failed (see above)"
+  fi
 }
 
 # Semantic Validators

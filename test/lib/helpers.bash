@@ -896,6 +896,48 @@ ensure_foundation() {
   debug 3 "ensure_foundation: Foundation copied successfully"
 }
 
+# make_stub_script <filename> <exit_code> [stdout_text] [marker_file]
+#
+# Writes a standalone stub script to "$BATS_TEST_TMPDIR/<filename>": prints
+# [stdout_text] (if given) to stdout, touches [marker_file] (if given), then
+# exits with <exit_code>. Echoes the stub's path on stdout.
+#
+# BATS_TEST_TMPDIR is already a fresh, unique directory per test (bats-core
+# creates it automatically), so writing directly to a caller-chosen filename
+# there is enough -- no mktemp needed for uniqueness.
+#
+# General-purpose building block for "swap in a fake script and assert it
+# was/wasn't called, or that its exit status/output was correctly
+# propagated" -- pair it with whatever variable names the real script's
+# path in the code under test (e.g. PGXNTOOL_CHECK_STALE_EXPECTED_SCRIPT for
+# check-stale-expected.sh). See "Proving a Script Was/Wasn't Invoked" in
+# CLAUDE.md for the reasoning, including why this is a make-variable
+# override rather than the PATH-shadowing technique BATS-ecosystem mocking
+# libraries (e.g. bats-mock) use: those intercept a bare command name
+# resolved via PATH, which doesn't apply here since base.mk invokes the
+# script by an explicit path, not a bare name.
+#
+# Examples:
+#   stub=$(make_stub_script invoked-stub 1 "" "$marker")   # "was it called"
+#   stub=$(make_stub_script fail-stub 5 "some message")    # exit-status/output propagation
+make_stub_script() {
+  local filename="$1"
+  local exit_code="${2:-0}"
+  local stdout_text="${3:-}"
+  local marker_file="${4:-}"
+  local stub="$BATS_TEST_TMPDIR/$filename"
+
+  {
+    echo '#!/usr/bin/env bash'
+    [ -n "$stdout_text" ] && printf 'echo %q\n' "$stdout_text"
+    [ -n "$marker_file" ] && printf 'touch %q\n' "$marker_file"
+    printf 'exit %q\n' "$exit_code"
+  } > "$stub"
+  chmod +x "$stub"
+
+  echo "$stub"
+}
+
 # ============================================================================
 # PostgreSQL Availability Detection
 # ============================================================================

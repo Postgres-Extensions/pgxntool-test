@@ -96,14 +96,17 @@ setup() {
   assert_contains "$output" "test/results/"
 }
 
-@test "make clean removes the real test/results output directory" {
-  mkdir -p test/results
-  touch test/results/dummy.out
-  assert_dir_exists "test/results"
-
-  run make clean
+@test "EXTRA_CLEAN's test/results/ entry actually percolates into the clean recipe" {
+  # Layering (see CLAUDE.md): whether `rm -rf` actually deletes a directory
+  # is PGXS's own established `clean`/EXTRA_CLEAN mechanism, not pgxntool's
+  # to re-verify. What pgxntool IS responsible for is correctly populating
+  # EXTRA_CLEAN (covered above) AND that entry genuinely reaching the real
+  # `clean` recipe -- in case something upstream never wires EXTRA_CLEAN into
+  # `clean`'s dependency graph at all. Verify via dry-run, so this doesn't
+  # need to invoke or verify PGXS's own deletion mechanics.
+  run make -n clean
   assert_success
-  assert_dir_not_exists "test/results"
+  assert_contains "$output" "test/results/"
 }
 
 # Unique database name tests
@@ -148,30 +151,22 @@ EOF
 # loudly instead. It runs AFTER install/installcheck (pg_regress), via an
 # explicit `check-stale-expected: installcheck` dependency edge in base.mk,
 # not as an early fail-fast check -- see the "runs after pg_regress, not
-# before" test below. It checks two directory pairs: test/sql <->
-# test/expected, and test/build <-> test/build/expected.
+# before" test below.
 #
-# It also has to tolerate pg_regress's alternate expected-output files
-# (test.out, test_0.out .. test_9.out -- see get_alternative_expectfile() in
-# pg_regress.c), which a naive basename comparison would flag as orphaned
-# since there's no matching test_1.sql etc. This is not a hypothetical edge
-# case: pg_tle's own test suite ships pg_tle_perms_1.out/pg_tle_versions_1.out
-# (see /root/git/pg_tle/test/expected/), and pgtap/pglogical/count_nulls use
-# the same _N.out convention. This was the exact false positive caught in
-# review before this fix landed, and is tested explicitly below.
-#
-# It also fails (distinctly, exit code 2 vs 1) if expected/ contains any
-# file that isn't *.out -- disable-able on its own via
-# PGXNTOOL_CHECK_EXPECTED_FILE_TYPES=no, independent of disabling the
-# whole check via PGXNTOOL_ENABLE_CHECK_STALE_EXPECTED=no.
+# See also: CLAUDE.md's testing-layering section, and
+# check-stale-expected-script.bats for the script's own decision-logic tests
+# (not duplicated here).
 
 @test "check-stale-expected depends on installcheck, so it runs after pg_regress, not before" {
+  # Capture dry-run make output and ensure that pg_regress is called before
+  # check-stale-expected.sh.
+  #
   # check-stale-expected must run AFTER pg_regress (installcheck), not
   # before -- Make only guarantees order via a real dependency edge, not
   # position in TEST_DEPS, so this is enforced by `check-stale-expected:
-  # installcheck` in base.mk. Verify via dry-run (no PostgreSQL needed):
-  # the real installcheck pg_regress invocation must appear before the
-  # check-stale-expected.sh call in the recipe order `make test` would run.
+  # installcheck` in base.mk. No PostgreSQL needed for this: the recipe
+  # order in `make -n test` output is enough to prove the dependency edge
+  # is real.
   run make -n test
   assert_success
 
@@ -195,19 +190,51 @@ EOF
 }
 
 @test "check-stale-expected passes on clean template state" {
+  # Not a decision-logic test (no orphan/alternate-file scenario is
+  # crafted) -- this is an end-to-end smoke check that the real template
+  # stays in the passing state the Template Requirements section of
+  # CLAUDE.md requires, exercised through the real recipe and real script.
   run make check-stale-expected
   assert_success
 }
 
-@test "check-stale-expected fails on an orphaned test/expected/*.out" {
-  touch test/expected/orphan_test.out
+@test "check-stale-expected recipe invokes the script with TESTDIR and the file-types arg" {
+  # base.mk's responsibility, not the script's: does the recipe actually
+  # pass the right positional arguments? Verified via dry-run (no
+  # Postgres/script execution needed) for both the default value and an
+  # explicit override, so this only exercises the make plumbing.
+  run make -n check-stale-expected
+  assert_success
+  assert_contains "$output" "test/bin/check-stale-expected.sh test yes"
 
-  run make check-stale-expected
-  assert_failure
-  assert_contains "$output" "orphan_test.out"
-  assert_contains "$output" "no corresponding"
+  run make -n check-stale-expected PGXNTOOL_CHECK_EXPECTED_FILE_TYPES=no
+  assert_success
+  assert_contains "$output" "test/bin/check-stale-expected.sh test no"
+}
 
-  rm -f test/expected/orphan_test.out
+@test "PGXNTOOL_ENABLE_CHECK_STALE_EXPECTED=no: make test never invokes check-stale-expected.sh" {
+  skip_if_no_postgres
+
+  # Disabling via this variable drops the check-stale-expected target from
+  # TEST_DEPS (and its own definition) entirely -- see base.mk -- so the
+  # script must never even be invoked, not merely have a failure from it
+  # ignored. That's a materially stronger claim than "make test succeeds
+  # despite a stale file", so prove it directly: point
+  # PGXNTOOL_CHECK_STALE_EXPECTED_SCRIPT -- the one variable the
+  # check-stale-expected recipe actually invokes (see base.mk) -- at a stub
+  # that only touches a marker file and fails. No need to fake out
+  # PGXNTOOL_DIR itself, since this variable is the sole thing standing
+  # between the target and the real script. If the marker never appears,
+  # the script was genuinely never called. This is base.mk's
+  # target-skipping behavior, not the script's decision logic, so a stub
+  # (not the real script) is exactly what should stand in here.
+  local marker="$BATS_TEST_TMPDIR/check-stale-expected-invoked"
+  local stub_script
+  stub_script=$(make_stub_script check-stale-expected-stub 1 "" "$marker")
+
+  run make test PGXNTOOL_ENABLE_CHECK_STALE_EXPECTED=no PGXNTOOL_CHECK_STALE_EXPECTED_SCRIPT="$stub_script"
+  assert_success
+  assert_file_not_exists "$marker"
 }
 
 @test "make test fails on a stale expected file, but only after pg_regress has already run" {
@@ -235,77 +262,26 @@ EOF
   rm -f test/expected/orphan_test.out
 }
 
-@test "check-stale-expected does not false-flag pg_regress alternate files (_N.out)" {
-  # base.sql exists in the template, so base_1.out must be tolerated as an
-  # alternate expected file for it, not flagged as orphaned.
-  touch test/expected/base_1.out
+@test "make correctly propagates check-stale-expected.sh's exit status and output" {
+  # base.mk's responsibility, not the script's decision logic (the real
+  # script's distinct exit codes and messages are already covered directly
+  # in check-stale-expected-script.bats): does `make check-stale-expected`
+  # correctly surface whatever PGXNTOOL_CHECK_STALE_EXPECTED_SCRIPT does? A
+  # stub that deterministically prints a message and exits nonzero must
+  # make the target (and `make`'s own recipe-failure handling) fail and
+  # show that message; a stub that exits 0 must let it pass -- regardless
+  # of what the real script would have decided for the same directory.
+  local stub_script
+  stub_script=$(make_stub_script fail-stub 5 "STUB SENTINEL MESSAGE")
 
-  run make check-stale-expected
-  assert_success
-
-  rm -f test/expected/base_1.out
-}
-
-@test "check-stale-expected still fails when the alternate file's own base .sql is missing" {
-  # phantom_1.out has no phantom.sql either -- the _N.out exemption must not
-  # blanket-exempt every _N.out file, only ones whose stripped base matches
-  # a real .sql file.
-  touch test/expected/phantom_1.out
-
-  run make check-stale-expected
+  run make check-stale-expected PGXNTOOL_CHECK_STALE_EXPECTED_SCRIPT="$stub_script"
   assert_failure
-  assert_contains "$output" "phantom_1.out"
+  assert_contains "$output" "STUB SENTINEL MESSAGE"
 
-  rm -f test/expected/phantom_1.out
-}
+  stub_script=$(make_stub_script pass-stub 0)
 
-@test "check-stale-expected also checks the test/build <-> test/build/expected pair" {
-  touch test/build/expected/orphan_build.out
-
-  run make check-stale-expected
-  assert_failure
-  assert_contains "$output" "orphan_build.out"
-
-  rm -f test/build/expected/orphan_build.out
-
-  # And tolerates the same _N.out alternate-file convention there too.
-  # build_check.sql exists in the template.
-  touch test/build/expected/build_check_1.out
-
-  run make check-stale-expected
+  run make check-stale-expected PGXNTOOL_CHECK_STALE_EXPECTED_SCRIPT="$stub_script"
   assert_success
-
-  rm -f test/build/expected/build_check_1.out
-}
-
-@test "check-stale-expected fails with a distinct message/exit code for a non-.out file in expected/" {
-  touch test/expected/stray.txt
-
-  # Invoke the script directly rather than through 'make': make's own exit
-  # status on any recipe failure is always 2 regardless of the underlying
-  # command's exit code, so verifying the script's own distinct exit codes
-  # (1 = orphaned .out, 2 = unexpected non-.out file, 3 = both) requires
-  # calling it directly.
-  run pgxntool/test/bin/check-stale-expected.sh test
-  assert_failure_with_status 2
-  assert_contains "$output" "unexpected non-.out file"
-  assert_contains "$output" "stray.txt"
-
-  # 'make check-stale-expected' should still surface the same message.
-  run make check-stale-expected
-  assert_failure
-  assert_contains "$output" "unexpected non-.out file"
-
-  rm -f test/expected/stray.txt
-}
-
-@test "PGXNTOOL_CHECK_EXPECTED_FILE_TYPES=no disables the non-.out file sub-check" {
-  touch test/expected/stray.txt
-
-  run make check-stale-expected PGXNTOOL_CHECK_EXPECTED_FILE_TYPES=no
-  assert_success
-
-  rm -f test/expected/stray.txt
 }
 
 # vi: expandtab sw=2 ts=2
