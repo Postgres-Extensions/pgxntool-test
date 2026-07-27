@@ -18,6 +18,23 @@ Create a release for pgxntool and pgxntool-test.
 
 - **STABLE section**: The heading in `HISTORY.asc` where unreleased changes are documented. During a release, this heading is replaced with the version number. This has nothing to do with git branches.
 - **UPSTREAM_REMOTE**: The local git remote pointing to the main project repos at `https://github.com/Postgres-Extensions/`. Releases must be pushed here -- never to a fork. The remote name varies; it is identified by URL pattern in the pre-flight script.
+- **User-facing API surface**: what the Step 2 review agents treat as "the
+  documented API" of pgxntool. This is a working definition and is expected
+  to evolve — when a reviewer hits a case that doesn't clearly fit, flag it
+  for the user rather than guessing:
+  - Every make target pgxntool defines (discover these, don't assume a
+    fixed file list — grep target definitions across `base.mk`,
+    `control.mk.sh`, `meta.mk.sh`, and any other `.mk`/`.mk.sh` files in
+    pgxntool).
+  - Target prerequisites worth documenting by name even when not invoked
+    directly (e.g. `testdeps`), since extension authors may reference or
+    override them.
+  - Every variable prefixed `PGXNTOOL_` (grep for it across the whole tree).
+  - Scripts a user is realistically expected to invoke by hand:
+    `setup.sh`, `pgxntool-sync.sh`, `update-setup-files.sh`, and `pgtle.sh`.
+  - Everything else (e.g. `JSON.sh`, `lib.sh`, `safesed`, `build_meta.sh`,
+    `run-test-build.sh`, `verify-results-pgtap.sh`) is internal by default
+    unless there's a specific indication otherwise.
 
 ---
 
@@ -64,11 +81,9 @@ every agent concrete file paths, not a vague "review the code" instruction.
 `HISTORY.asc`)
 
 - Scope: commits in `../pgxntool` between the `release` tag and `HEAD`
-  (`git log release..HEAD`, `git diff release..HEAD -- base.mk control.mk.sh
-  setup.sh meta.mk.sh build_meta.sh pgxntool-sync.sh update-setup-files.sh
-  run-test-build.sh verify-results-pgtap.sh lib.sh pgtle.sh`).
-- For every change to a make target, make/environment variable, or
-  user-facing script or flag in that diff, compare against:
+  (`git log release..HEAD`, `git diff release..HEAD`), restricted to changes
+  that touch the user-facing API surface (see Terminology).
+- For every such change, compare against:
   - `../pgxntool/HISTORY.asc` STABLE section — is the behavior change called
     out there?
   - `../pgxntool/README.asc` — if the change added, removed, renamed, or
@@ -76,20 +91,20 @@ every agent concrete file paths, not a vague "review the code" instruction.
     updated to match?
 - Report: (1) behavior changes in the diff not mentioned in the STABLE
   section, (2) API items added or removed by these commits but not reflected
-  in README.asc.
+  in README.asc, (3) anything encountered that's ambiguously in/out of the
+  user-facing API surface.
 
 **B. Comprehensive review** (focus: current-state drift, regardless of
 history)
 
-- Scope: everything documented under "== make targets" and any documented
-  variables in `../pgxntool/README.asc`, compared against everything
-  actually implemented in `base.mk`, `control.mk.sh`, `setup.sh`,
-  `meta.mk.sh`, `build_meta.sh`, `pgxntool-sync.sh`, `update-setup-files.sh`,
-  `run-test-build.sh`, `verify-results-pgtap.sh`, `lib.sh`, `pgtle.sh`.
+- Scope: the full user-facing API surface (see Terminology) as it exists in
+  `../pgxntool` right now, compared against everything documented in
+  `../pgxntool/README.asc`.
 - Report: (1) documented items no longer present in code, (2) code-level
-  items (targets/variables/scripts) not documented in README.asc, (3)
+  items in the user-facing API surface not documented in README.asc, (3)
   documented behavior that no longer matches the code (wrong defaults,
-  wrong prerequisites, wrong descriptions).
+  wrong prerequisites, wrong descriptions), (4) anything encountered that's
+  ambiguously in/out of the user-facing API surface.
 - This review ignores git history entirely — it only compares the README
   against the code as they exist right now.
 
@@ -135,6 +150,10 @@ For each finding:
   unrelated to this release. Show the findings to the user and ask whether
   to fix now (as part of this release), file as follow-up work, or dismiss
   as a false positive — don't silently fix or silently ignore them.
+- **Ambiguous user-facing API surface calls (either agent):** show these to
+  the user too. If a pattern recurs or the user gives a clear answer,
+  consider updating the "User-facing API surface" definition in Terminology
+  so future reviews don't re-flag it.
 
 Summarize what was found and how each item was resolved before moving on.
 
