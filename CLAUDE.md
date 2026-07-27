@@ -32,6 +32,27 @@ work on that, or did you mean to send this to a different session?"
 This applies to: editing PR branches, pushing to them, closing/reopening them,
 adding commits, modifying PR descriptions, or any other PR-level action.
 
+## Check Master Sync Before Branching
+
+**Before creating a new branch or worktree** in either repo, fetch the
+upstream remote and confirm local master isn't behind it — don't just check
+`git status`/branch name, actually compare the SHAs:
+
+```bash
+git fetch upstream master --quiet
+git rev-parse master upstream/master  # compare the two SHAs
+```
+
+If local master is behind, sync it before branching off it — don't branch
+from a stale base. This isn't hypothetical: local `pgxntool` master was
+found 8 commits behind `upstream/master` mid-session, and one of those
+missed commits had already fixed one of the exact issues a documentation
+review was about to "fix" again.
+
+This is separate from (and broader than) the `/release` skill's own
+pre-flight sync check (Step 1) — that one only runs right before a release;
+this applies to *any* new branch or worktree in either repo.
+
 ## Git Commit Guidelines
 
 **CRITICAL**: Never attempt to commit changes on your own initiative. Always wait for explicit user instruction to commit. Even if you detect issues (like out-of-date files), inform the user and let them decide when to commit.
