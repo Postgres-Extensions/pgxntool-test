@@ -80,6 +80,32 @@ setup() {
   assert_success
 }
 
+# ============================================================================
+# EXTRA_CLEAN must target the real $(TESTOUT)/results/ directory (issue #7)
+# ============================================================================
+#
+# PGXS's pg_regress_clean_files unconditionally rm -rf's a top-level results/,
+# but pg_regress actually writes to $(TESTOUT)/results/ (test/results/ by
+# default, via --outputdir in REGRESS_OPTS). EXTRA_CLEAN used to list a
+# nonexistent top-level results/ instead of the real directory, so `make
+# clean` never removed actual test output.
+
+@test "EXTRA_CLEAN lists the real TESTOUT/results directory" {
+  run make print-EXTRA_CLEAN
+  assert_success
+  assert_contains "$output" "test/results/"
+}
+
+@test "make clean removes the real test/results output directory" {
+  mkdir -p test/results
+  touch test/results/dummy.out
+  assert_dir_exists "test/results"
+
+  run make clean
+  assert_success
+  assert_dir_not_exists "test/results"
+}
+
 # Unique database name tests
 #
 # Verify that make test uses a unique database name based on the project name
@@ -119,10 +145,11 @@ EOF
 #
 # `make test` never caught a stale test/expected/*.out left behind after a
 # test/sql/*.sql file was renamed or removed. check-stale-expected fails
-# loudly instead, and is wired into TEST_DEPS so `make test` runs it first
-# (before install/installcheck, so no PostgreSQL is needed to observe the
-# failure). It checks two directory pairs: test/sql <-> test/expected, and
-# test/build <-> test/build/expected.
+# loudly instead. It runs AFTER install/installcheck (pg_regress), via an
+# explicit `check-stale-expected: installcheck` dependency edge in base.mk,
+# not as an early fail-fast check -- see the "runs after pg_regress, not
+# before" test below. It checks two directory pairs: test/sql <->
+# test/expected, and test/build <-> test/build/expected.
 #
 # It also has to tolerate pg_regress's alternate expected-output files
 # (test.out, test_0.out .. test_9.out -- see get_alternative_expectfile() in

@@ -132,4 +132,36 @@ setup() {
   echo "$files" | grep -q "doc/.*\.asc"
 }
 
+# ============================================================================
+# PGXN_REMOTE override for tag/rmtag/forcetag/dist (issue #53)
+# ============================================================================
+#
+# tag/rmtag hardcoded the "origin" remote, so a maintainer whose origin is a
+# personal fork would silently re-tag the wrong repo. PGXN_REMOTE ?= origin
+# preserves the default while allowing an override. Verified via `make -n`
+# dry-runs against this file's own foundation environment, which already has
+# an "origin" remote configured (see build_test_repo_from_template).
+
+@test "PGXN_REMOTE defaults to origin for tag and rmtag" {
+  run make -n tag 2>&1
+  assert_success
+  assert_contains "$output" "git push origin"
+
+  run make -n rmtag 2>&1
+  assert_success
+  assert_contains "$output" "git fetch origin"
+}
+
+@test "PGXN_REMOTE overrides the remote used by tag and rmtag" {
+  run make -n tag PGXN_REMOTE=upstream 2>&1
+  assert_success
+  assert_contains "$output" "git push upstream"
+  assert_not_contains "$output" "git push origin"
+
+  run make -n rmtag PGXN_REMOTE=upstream 2>&1
+  assert_success
+  assert_contains "$output" "git fetch upstream"
+  assert_not_contains "$output" "git fetch origin"
+}
+
 # vi: expandtab sw=2 ts=2
