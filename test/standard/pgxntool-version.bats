@@ -4,8 +4,10 @@
 #
 # Tests pgxntool-version.sh's HISTORY.asc parsing in isolation (a stamped
 # version, an unreleased "STABLE" checkout, a missing file, an empty file,
-# malformed first lines), plus that `make pgxntool-version` is correctly
-# wired to it inside a real embedded pgxntool copy.
+# malformed first lines), that `make pgxntool-version` is correctly wired to
+# it inside a real embedded pgxntool copy, and (CRITICAL -- see comment
+# below) that it matches the actual, unmodified pgxntool checkout this test
+# suite is running against.
 
 load ../lib/helpers
 
@@ -67,10 +69,23 @@ setup() {
   done
 }
 
-@test "pgxntool-version.sh defaults to its own directory's HISTORY.asc" {
+# CRITICAL: this test must run pgxntool-version.sh directly against the real,
+# unmodified $TOPDIR/../pgxntool checkout -- never a scratch file, an rsync'd
+# copy, or a cached foundation snapshot. A release PR stamps HISTORY.asc with
+# the real version and relies on CI running this exact check to catch a bad
+# stamp before it's tagged and pushed -- that guarantee only holds if the
+# check reads the literal, current pgxntool/HISTORY.asc. This matters most
+# precisely when the top line is NOT "STABLE": that's the release commit
+# itself, and a copy-based or stale check could pass against old content and
+# let a wrong version ship. Do not weaken this to a scratch-file test or to a
+# non-empty check.
+@test "pgxntool-version.sh matches the current pgxntool/HISTORY.asc with no modifications" {
+  local expected
+  expected=$(head -n1 "$TOPDIR/../pgxntool/HISTORY.asc")
+
   run "$VERSION_SCRIPT"
   assert_success
-  [ -n "$output" ]
+  [ "$output" = "$expected" ]
 }
 
 @test "make pgxntool-version matches the embedded pgxntool/HISTORY.asc" {

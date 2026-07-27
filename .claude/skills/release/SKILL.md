@@ -187,7 +187,34 @@ Summarize what was found and how each item was resolved before moving on.
    cd ../pgxntool && git commit -am "Stamp VERSION"
    ```
 
-## Step 7: Tag and Push pgxntool
+## Step 7: Sanity-Check pgxntool-version Output
+
+CI depends on `pgxntool-version.sh` (see `../pgxntool/pgxntool-version.sh`,
+wired up as `make pgxntool-version`) correctly reflecting whatever is
+actually on the first line of `HISTORY.asc` -- that's what lets a release PR
+be caught in CI if the stamp in Step 6 didn't take effect the way it should
+have. Exercise the real `make pgxntool-version` target (not just the script)
+against the just-stamped, unmodified `../pgxntool` checkout:
+
+```bash
+scratch=$(mktemp -d)
+ln -s "$(cd ../pgxntool && pwd)" "$scratch/pgxntool"
+echo 'include pgxntool/base.mk' > "$scratch/Makefile"
+(cd "$scratch" && make --no-print-directory pgxntool-version)
+rm -rf "$scratch"
+```
+
+Expect a harmless `ERROR: Usage: control.mk.sh ...` / `make: *** Deleting
+file 'control.mk'` line before the real output -- the scratch dir has no
+`.control` files, so `base.mk`'s `-include control.mk` fails to build it and
+make silently continues (same class of noise the `make list` trick above
+produces). **The last line printed must be exactly VERSION.** If it's
+`STABLE`, an old version, or an error instead, the Step 6 edit didn't take
+effect correctly (or `pgxntool-version.sh`/`base.mk` themselves regressed).
+Stop and fix it -- do not tag or push a release that `make pgxntool-version`
+doesn't agree with.
+
+## Step 8: Tag and Push pgxntool
 
 **CRITICAL: Push to the Postgres-Extensions remote, not to a fork.**
 
@@ -198,7 +225,7 @@ git push PGXNTOOL_UPSTREAM master
 git push PGXNTOOL_UPSTREAM VERSION
 ```
 
-## Step 8: Stamp, Tag, and Push pgxntool-test
+## Step 9: Stamp, Tag, and Push pgxntool-test
 
 **CRITICAL: Push to the Postgres-Extensions remote, not to a fork.**
 
@@ -212,7 +239,7 @@ git push PGXNTOOL_TEST_UPSTREAM master
 git push PGXNTOOL_TEST_UPSTREAM VERSION
 ```
 
-## Step 9: Update `release` Tag
+## Step 10: Update `release` Tag
 
 Both repos have a `release` tag on upstream that must always point to the latest
 release. This is a moving tag that requires force-push to update.
@@ -229,7 +256,7 @@ git tag -f release VERSION
 git push PGXNTOOL_TEST_UPSTREAM -f refs/tags/release
 ```
 
-## Step 10: Verify and Report
+## Step 11: Verify and Report
 
 ```bash
 cd ../pgxntool && git checkout master
