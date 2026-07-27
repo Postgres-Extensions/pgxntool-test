@@ -44,10 +44,8 @@ git rev-parse master upstream/master  # compare the two SHAs
 ```
 
 If local master is behind, sync it before branching off it — don't branch
-from a stale base. This isn't hypothetical: local `pgxntool` master was
-found 8 commits behind `upstream/master` mid-session, and one of those
-missed commits had already fixed one of the exact issues a documentation
-review was about to "fix" again.
+from a stale base. Branching from a stale master risks redoing work that's
+already been fixed upstream.
 
 This is separate from (and broader than) the `/release` skill's own
 pre-flight sync check (Step 1) — that one only runs right before a release;
