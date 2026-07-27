@@ -3,9 +3,9 @@
 # Test: pgxntool-version
 #
 # Tests pgxntool-version.sh's HISTORY.asc parsing in isolation (a stamped
-# version, an unreleased "STABLE" checkout, a missing file, an empty file),
-# plus that `make pgxntool-version` is correctly wired to it inside a real
-# embedded pgxntool copy.
+# version, an unreleased "STABLE" checkout, a missing file, an empty file,
+# malformed first lines), plus that `make pgxntool-version` is correctly
+# wired to it inside a real embedded pgxntool copy.
 
 load ../lib/helpers
 
@@ -55,6 +55,16 @@ setup() {
   run "$VERSION_SCRIPT" "$SCRATCH_DIR/HISTORY.asc"
   assert_failure
   assert_contains "$output" "empty"
+}
+
+@test "pgxntool-version.sh rejects a malformed first line" {
+  for bad in "stable" "v2.1.0" "2.1.0-beta" "2.1" "not a version"; do
+    echo "$bad" > "$SCRATCH_DIR/HISTORY.asc"
+
+    run "$VERSION_SCRIPT" "$SCRATCH_DIR/HISTORY.asc"
+    assert_failure
+    assert_contains "$output" "neither STABLE nor a X.Y.Z version"
+  done
 }
 
 @test "pgxntool-version.sh defaults to its own directory's HISTORY.asc" {
