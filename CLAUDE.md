@@ -32,6 +32,25 @@ work on that, or did you mean to send this to a different session?"
 This applies to: editing PR branches, pushing to them, closing/reopening them,
 adding commits, modifying PR descriptions, or any other PR-level action.
 
+## Check Master Sync Before Branching
+
+**Before creating a new branch or worktree** in either repo, fetch the
+upstream remote and confirm local master isn't behind it — don't just check
+`git status`/branch name, actually compare the SHAs:
+
+```bash
+git fetch upstream master --quiet
+git rev-parse master upstream/master  # compare the two SHAs
+```
+
+If local master is behind, sync it before branching off it — don't branch
+from a stale base. Branching from a stale master risks redoing work that's
+already been fixed upstream.
+
+This is separate from (and broader than) the `/release` skill's own
+pre-flight sync check (Step 1) — that one only runs right before a release;
+this applies to *any* new branch or worktree in either repo.
+
 ## Git Commit Guidelines
 
 **CRITICAL**: Never attempt to commit changes on your own initiative. Always wait for explicit user instruction to commit. Even if you detect issues (like out-of-date files), inform the user and let them decide when to commit.
@@ -128,6 +147,67 @@ This repository contains template extension files in the `template/` directory w
 **If you see `.gitattributes` in pgxntool-test**: Remove it immediately. It shouldn't exist here.
 
 **Where it belongs**: `../pgxntool/.gitattributes` is the correct location - it controls what gets excluded from distributions when extension developers run `make dist`.
+
+### User-Facing API Surface of pgxntool
+
+This defines what counts as pgxntool's "public API" for the purposes of the
+`/release` skill's API documentation review (`.claude/skills/release/SKILL.md`,
+Step 2): the surface that must be kept in sync between the code and
+`../pgxntool/README.asc`, and whose behavior changes must be called out in
+`../pgxntool/HISTORY.asc`. It's a working definition, expected to evolve:
+when something doesn't clearly fit, don't guess — raise it and update this
+section once resolved.
+
+1. **Make targets pgxntool defines**, including dev-helper targets like
+   `list` and `print-%` (they exist specifically to help users introspect
+   the Makefile). Excludes:
+   - Targets pgxntool inherits from PGXS unmodified (`install`,
+     `installcheck`, `submake-*`, etc.).
+   - Pure generated-file targets (`META.json`, `meta.mk`, `control.mk`) —
+     build plumbing, not something a user intentionally runs.
+   - Conditionally-defined helper targets that exist purely to support
+     another target's lifecycle rather than being invoked directly (e.g.
+     `clean-test-build`, which only runs as a hook off `clean`; the
+     install-schedule file target that `installcheck` depends on). The
+     primary target they support (e.g. `test-build` itself) remains in
+     scope if it's meant to be invoked directly and is independently
+     documented.
+   - **Known gap**: pgxntool's own modifications to shared-name PGXS
+     targets (e.g. `test`'s prerequisites, `clean`'s `EXTRA_CLEAN`
+     additions) are currently excluded along with the rest of that
+     target's PGXS lineage, since the exclusion is by name alone. This has
+     already hidden real drift once (a stale README claim about `test`'s
+     prerequisites) — revisit if it keeps happening.
+   - Finding these requires reading the actual source, not just running
+     `make list` — conditionally-gated targets, and anything else a
+     discovery tool can't fully enumerate, only show up by inspecting
+     `base.mk`/`control.mk.sh`/`meta.mk.sh` directly.
+2. **Target prerequisites worth documenting by name** even when not
+   invoked directly (e.g. `testdeps`), since extension authors may
+   reference or override them.
+3. **Variables prefixed `PGXNTOOL_` that are designed for override** —
+   defaulted with `?=`, or normalized via the validate/override pattern in
+   `lib.sh` (e.g. `pgxntool_validate_yesno`). Excludes pure internal
+   plumbing like `PGXNTOOL_DIR`, `PGXNTOOL_CONTROL_FILES`,
+   `PGXNTOOL_EXTENSIONS` — never meant to be set by users.
+4. **Scripts a user is realistically expected to invoke by hand**:
+   `setup.sh`, `pgxntool-sync.sh`, `update-setup-files.sh`, and `pgtle.sh`
+   (including its own CLI flags, not just the make targets that wrap it).
+5. **`DEBUG` is a special case**: its existence may be documented (it's
+   fine for users to know it exists), but the specific level numbers are
+   an internal implementation detail, not a documented contract — changing
+   them is not a behavior change that needs a `HISTORY.asc` entry.
+6. **`../pgxntool/CLAUDE.md` is in scope, not exempt as "doc-only."** Unlike
+   ordinary dev-only documentation, this file ships into every consumer
+   project via subtree and is written for AI agents working in *those*
+   consumer repos — it's effectively part of pgxntool's product, the same
+   way `README.asc` is. Treat substantive changes to it like changes to
+   `README.asc`: they should be reviewed for accuracy, and if they describe
+   a behavior change, call it out in `HISTORY.asc` too. (For other files
+   that are genuinely just internal dev documentation with no bearing on
+   consumer projects, doc-only changes don't need a `HISTORY.asc` entry.)
+7. Everything else is internal by default unless there's a specific
+   indication otherwise.
 
 ## Running Skills and Scripts
 

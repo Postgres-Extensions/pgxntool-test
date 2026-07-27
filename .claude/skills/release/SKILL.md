@@ -18,6 +18,29 @@ Create a release for pgxntool and pgxntool-test.
 
 - **STABLE section**: The heading in `HISTORY.asc` where unreleased changes are documented. During a release, this heading is replaced with the version number. This has nothing to do with git branches.
 - **UPSTREAM_REMOTE**: The local git remote pointing to the main project repos at `https://github.com/Postgres-Extensions/`. Releases must be pushed here -- never to a fork. The remote name varies; it is identified by URL pattern in the pre-flight script.
+- **User-facing API surface**: what the Step 2 review agents treat as "the
+  documented API" of pgxntool. The canonical, evolving definition lives in
+  this repo's own `CLAUDE.md`, under "User-Facing API Surface of pgxntool"
+  (not `../pgxntool/CLAUDE.md` — that file is user-facing docs for
+  extension developers, not dev/audit tooling docs). Read that section
+  fresh before launching the Step 2 agents and give them its current text
+  verbatim as their scope, since it's expected to change over time. When a
+  reviewer hits a case that doesn't clearly fit, flag it for the user
+  rather than guessing, and consider updating that section afterward.
+- **Discovering make targets**: the definition's target list should be
+  found with `make list` (a target pgxntool itself provides — see
+  `base.mk`), not by grepping for target definitions, since pattern rules
+  and generated targets are easy to miss that way. Run it from a scratch
+  directory containing nothing but a `Makefile` with
+  `include <path-to-pgxntool>/base.mk`. Two things to watch for:
+  - The output includes harmless noise from make's own recursive-submake
+    chatter (literal lines `Makefile`, `make[1]`, etc.) — filter these out,
+    they aren't real targets.
+  - Targets gated behind `ifeq`/`ifdef` conditionals that depend on files
+    not present in a bare scratch directory (e.g. `test-build`,
+    `clean-test-build`, which only appear when `test/build/*.sql` or
+    `test/install/*.sql` exist) won't show up this way. Read `base.mk`
+    directly for these rather than relying on `make list` alone.
 
 ---
 
@@ -45,7 +68,56 @@ The script checks:
 - `PGXNTOOL_UPSTREAM` - remote name for pgxntool (e.g., "upstream")
 - `PGXNTOOL_TEST_UPSTREAM` - remote name for pgxntool-test (e.g., "upstream")
 
-## Step 2: Determine Version Number
+## Step 2: Launch API Documentation Review Agents
+
+Immediately after pre-flight passes, launch the review agents below via the
+Agent tool, running in the background. This happens early so the review has
+time to finish while Steps 3-4 (version number, confirming HISTORY.asc) are
+worked through.
+
+**Gate: do not proceed past Step 6 (Update HISTORY.asc and Commit) — i.e. do
+not make any release-related change to git — until both sets of findings
+below have been retrieved and inspected.** See Step 5.
+
+Launch two independent review efforts. Each may be one agent or a small set
+of agents if splitting the surface area (e.g. by file) makes sense; give
+every agent concrete file paths, not a vague "review the code" instruction.
+
+**A. Since-last-release review** (focus: what MUST be documented in
+`HISTORY.asc`)
+
+- Scope: commits in `../pgxntool` between the `release` tag and `HEAD`
+  (`git log release..HEAD`, `git diff release..HEAD`), restricted to changes
+  that touch the user-facing API surface (see Terminology). **Commit
+  titles are not a reliable filter** — a commit can touch API-surface
+  behavior without saying so in its subject line. Always check the actual
+  file-level diff, don't just scan `git log --oneline`.
+- For every such change, compare against:
+  - `../pgxntool/HISTORY.asc` STABLE section — is the behavior change called
+    out there?
+  - `../pgxntool/README.asc` — if the change added, removed, renamed, or
+    changed the default/semantics of a documented item, is README.asc
+    updated to match?
+- Report: (1) behavior changes in the diff not mentioned in the STABLE
+  section, (2) API items added or removed by these commits but not reflected
+  in README.asc, (3) anything encountered that's ambiguously in/out of the
+  user-facing API surface.
+
+**B. Comprehensive review** (focus: current-state drift, regardless of
+history)
+
+- Scope: the full user-facing API surface (see Terminology) as it exists in
+  `../pgxntool` right now, compared against everything documented in
+  `../pgxntool/README.asc`.
+- Report: (1) documented items no longer present in code, (2) code-level
+  items in the user-facing API surface not documented in README.asc, (3)
+  documented behavior that no longer matches the code (wrong defaults,
+  wrong prerequisites, wrong descriptions), (4) anything encountered that's
+  ambiguously in/out of the user-facing API surface.
+- This review ignores git history entirely — it only compares the README
+  against the code as they exist right now.
+
+## Step 3: Determine Version Number
 
 If VERSION was not provided as an argument, ask the user:
 
@@ -59,7 +131,7 @@ Use AskUserQuestion:
 .claude/skills/release/scripts/release-preflight.sh VERSION
 ```
 
-## Step 3: Confirm HISTORY.asc
+## Step 4: Confirm HISTORY.asc
 
 Read `../pgxntool/HISTORY.asc` and show the user what's in the STABLE section.
 
@@ -67,7 +139,34 @@ Read `../pgxntool/HISTORY.asc` and show the user what's in the STABLE section.
 - Warn: "No STABLE section found. No changes are documented for this release."
 - Ask user if they want to continue using AskUserQuestion.
 
-## Step 4: Update HISTORY.asc and Commit
+## Step 5: Inspect API Documentation Review Findings
+
+Retrieve the results from both review efforts launched in Step 2 (wait for
+them if they haven't finished). This is a hard gate: **do not proceed to
+Step 6 until this step is complete** — Step 6 is the first release step
+that changes git state, and the whole point of launching the reviews early
+was to have their findings in hand before that happens.
+
+For each finding:
+
+- **Since-last-release findings (2A):** a behavior change without a STABLE
+  entry MUST be fixed before continuing. Either add the missing entry to the
+  STABLE section now (folded into Step 6's edit), or ask the user how they
+  want it documented — do not release with an undocumented behavior change.
+  API items added/removed by these commits but missing from README.asc must
+  also be fixed (edit README.asc) before continuing.
+- **Comprehensive findings (2B):** these may include pre-existing drift
+  unrelated to this release. Show the findings to the user and ask whether
+  to fix now (as part of this release), file as follow-up work, or dismiss
+  as a false positive — don't silently fix or silently ignore them.
+- **Ambiguous user-facing API surface calls (either agent):** show these to
+  the user too. If a pattern recurs or the user gives a clear answer,
+  consider updating the "User-facing API surface" definition in Terminology
+  so future reviews don't re-flag it.
+
+Summarize what was found and how each item was resolved before moving on.
+
+## Step 6: Update HISTORY.asc and Commit
 
 1. Edit `../pgxntool/HISTORY.asc`: Replace the `STABLE` heading with the version number
 
@@ -88,7 +187,7 @@ Read `../pgxntool/HISTORY.asc` and show the user what's in the STABLE section.
    cd ../pgxntool && git commit -am "Stamp VERSION"
    ```
 
-## Step 5: Tag and Push pgxntool
+## Step 7: Tag and Push pgxntool
 
 **CRITICAL: Push to the Postgres-Extensions remote, not to a fork.**
 
@@ -99,7 +198,7 @@ git push PGXNTOOL_UPSTREAM master
 git push PGXNTOOL_UPSTREAM VERSION
 ```
 
-## Step 6: Stamp, Tag, and Push pgxntool-test
+## Step 8: Stamp, Tag, and Push pgxntool-test
 
 **CRITICAL: Push to the Postgres-Extensions remote, not to a fork.**
 
@@ -113,7 +212,7 @@ git push PGXNTOOL_TEST_UPSTREAM master
 git push PGXNTOOL_TEST_UPSTREAM VERSION
 ```
 
-## Step 7: Update `release` Tag
+## Step 9: Update `release` Tag
 
 Both repos have a `release` tag on upstream that must always point to the latest
 release. This is a moving tag that requires force-push to update.
@@ -130,7 +229,7 @@ git tag -f release VERSION
 git push PGXNTOOL_TEST_UPSTREAM -f refs/tags/release
 ```
 
-## Step 8: Verify and Report
+## Step 10: Verify and Report
 
 ```bash
 cd ../pgxntool && git checkout master
