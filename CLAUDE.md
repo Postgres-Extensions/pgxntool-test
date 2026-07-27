@@ -127,12 +127,23 @@ section once resolved.
      `installcheck`, `submake-*`, etc.).
    - Pure generated-file targets (`META.json`, `meta.mk`, `control.mk`) —
      build plumbing, not something a user intentionally runs.
+   - Conditionally-defined helper targets that exist purely to support
+     another target's lifecycle rather than being invoked directly (e.g.
+     `clean-test-build`, which only runs as a hook off `clean`; the
+     install-schedule file target that `installcheck` depends on). The
+     primary target they support (e.g. `test-build` itself) remains in
+     scope if it's meant to be invoked directly and is independently
+     documented.
    - **Known gap**: pgxntool's own modifications to shared-name PGXS
      targets (e.g. `test`'s prerequisites, `clean`'s `EXTRA_CLEAN`
      additions) are currently excluded along with the rest of that
      target's PGXS lineage, since the exclusion is by name alone. This has
      already hidden real drift once (a stale README claim about `test`'s
      prerequisites) — revisit if it keeps happening.
+   - Finding these requires reading the actual source, not just running
+     `make list` — conditionally-gated targets, and anything else a
+     discovery tool can't fully enumerate, only show up by inspecting
+     `base.mk`/`control.mk.sh`/`meta.mk.sh` directly.
 2. **Target prerequisites worth documenting by name** even when not
    invoked directly (e.g. `testdeps`), since extension authors may
    reference or override them.
@@ -148,9 +159,15 @@ section once resolved.
    fine for users to know it exists), but the specific level numbers are
    an internal implementation detail, not a documented contract — changing
    them is not a behavior change that needs a `HISTORY.asc` entry.
-6. **Doc-only changes to files that ship to consumers** (e.g.
-   `../pgxntool/CLAUDE.md`) don't need a `HISTORY.asc` entry —
-   `HISTORY.asc` covers behavior changes only.
+6. **`../pgxntool/CLAUDE.md` is in scope, not exempt as "doc-only."** Unlike
+   ordinary dev-only documentation, this file ships into every consumer
+   project via subtree and is written for AI agents working in *those*
+   consumer repos — it's effectively part of pgxntool's product, the same
+   way `README.asc` is. Treat substantive changes to it like changes to
+   `README.asc`: they should be reviewed for accuracy, and if they describe
+   a behavior change, call it out in `HISTORY.asc` too. (For other files
+   that are genuinely just internal dev documentation with no bearing on
+   consumer projects, doc-only changes don't need a `HISTORY.asc` entry.)
 7. Everything else is internal by default unless there's a specific
    indication otherwise.
 
