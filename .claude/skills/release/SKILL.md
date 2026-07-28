@@ -5,7 +5,7 @@ description: |
   HISTORY.asc updates, and pushing to the main Postgres-Extensions GitHub repos.
 
   Use when user says "release", "create release", "tag version", or "/release"
-allowed-tools: Bash(.claude/skills/release/scripts/release-preflight.sh:*), Bash(git tag:*), Bash(git commit:*), Bash(git push:*), Bash(git checkout:*), Bash(git status:*), Bash(git log:*), Bash(git remote:*), Bash(git rev-parse:*), Bash(git branch:*), Bash(git fetch:*), Bash(git diff:*), Read, Edit
+allowed-tools: Bash(.claude/skills/release/scripts/release-preflight.sh:*), Bash(git tag:*), Bash(git commit:*), Bash(git push:*), Bash(git checkout:*), Bash(git status:*), Bash(git log:*), Bash(git remote:*), Bash(git rev-parse:*), Bash(git branch:*), Bash(git fetch:*), Bash(git diff:*), Bash(git merge:*), Bash(gh pr create:*), Bash(gh pr view:*), Bash(gh pr checks:*), Bash(.claude/skills/ci/scripts/monitor-ci.sh:*), Read, Edit
 ---
 
 # /release
@@ -18,6 +18,11 @@ Create a release for pgxntool and pgxntool-test.
 
 - **STABLE section**: The heading in `HISTORY.asc` where unreleased changes are documented. During a release, this heading is replaced with the version number. This has nothing to do with git branches.
 - **UPSTREAM_REMOTE**: The local git remote pointing to the main project repos at `https://github.com/Postgres-Extensions/`. Releases must be pushed here -- never to a fork. The remote name varies; it is identified by URL pattern in the pre-flight script.
+- **Release branch**: `release-VERSION` (e.g. `release-2.2.0`), created fresh
+  off master in both repos once the version number is known (see
+  [Determine Version Number](#determine-version-number)). The stamp commit
+  lands here, not on master directly -- see
+  [Open Release Pull Requests](#open-release-pull-requests) for why.
 - **User-facing API surface**: what the review agents launched in
   [Launch API Documentation Review Agents](#launch-api-documentation-review-agents)
   treat as "the documented API" of pgxntool. The canonical, evolving
@@ -64,16 +69,19 @@ Create a release for pgxntool and pgxntool-test.
   output, hand them to separate subagents and let them run concurrently
   instead of sequentially -- e.g. the two review efforts in
   [Launch API Documentation Review Agents](#launch-api-documentation-review-agents)
-  already run as parallel background agents, and
-  [Tag and Push pgxntool](#tag-and-push-pgxntool) /
-  [Stamp, Tag, and Push pgxntool-test](#stamp-tag-and-push-pgxntool-test)
-  are two independent repos that can likewise run at the same time rather
-  than one after the other. Anything that reads or depends on another
-  step's output (e.g.
+  already run as parallel background agents, and the pgxntool /
+  pgxntool-test halves of
+  [Open Release Pull Requests](#open-release-pull-requests) and
+  [Tag Both Repos](#tag-both-repos) are two independent repos that can
+  likewise run at the same time rather than one after the other. Anything
+  that reads or depends on another step's output (e.g.
   [Sanity-Check bin/version Output](#sanity-check-binversion-output) needs
   the stamp from
   [Update HISTORY.asc and Commit](#update-historyasc-and-commit) to already
   exist) must still wait for that dependency first.
+- **This skill never merges its own release PRs, and never applies the
+  `commit-with-no-tests` label.** Both are explicit human actions -- see
+  [Wait for CI, Then Hand Off for Review](#wait-for-ci-then-hand-off-for-review).
 
 ---
 
@@ -207,6 +215,18 @@ Summarize what was found and how each item was resolved before moving on.
 
 ## Update HISTORY.asc and Commit
 
+### Create the release branch
+
+Both repos get a same-named branch (see **Release branch** in Terminology).
+Using the same name on both, pushed to the same (upstream) account, is what
+lets pgxntool-test's CI automatically pair its release PR with pgxntool's --
+see [Open Release Pull Requests](#open-release-pull-requests).
+
+```bash
+cd ../pgxntool && git checkout -b release-VERSION
+cd ../pgxntool-test && git checkout -b release-VERSION
+```
+
 ### Reorder the STABLE section entries by importance
 
 By this point (the gate in
@@ -265,37 +285,93 @@ directly against the just-stamped, unmodified `../pgxntool` checkout:
 an error instead, the stamp in
 [Update HISTORY.asc and Commit](#update-historyasc-and-commit) didn't take
 effect correctly (or `bin/version` itself regressed). Stop and fix it -- do
-not tag or push a release that doesn't agree with this.
+not open a release PR that doesn't agree with this.
 
-## Tag and Push pgxntool
+## Open Release Pull Requests
 
-**CRITICAL: Push to the Postgres-Extensions remote, not to a fork.**
+**Never commit or push straight to master.** pgxntool's CI only triggers on
+`pull_request` -- a direct push to master's `master` branch (which earlier
+versions of this skill did) never runs CI at all, silently skipping every
+check this repo relies on. Instead, push the release branch and open a PR
+in each repo, same as any other change.
 
 ```bash
 cd ../pgxntool
-git tag VERSION
-git push PGXNTOOL_UPSTREAM master
-git push PGXNTOOL_UPSTREAM VERSION
+git push PGXNTOOL_UPSTREAM release-VERSION
+gh pr create --repo Postgres-Extensions/pgxntool \
+  --base master --head release-VERSION \
+  --title "Release VERSION" \
+  --body "Stamps HISTORY.asc for VERSION. Companion: pgxntool-test release-VERSION."
 ```
-
-## Stamp, Tag, and Push pgxntool-test
-
-**CRITICAL: Push to the Postgres-Extensions remote, not to a fork.**
-
-Create a stamp commit to match pgxntool's, then tag and push:
 
 ```bash
 cd ../pgxntool-test
 git commit --allow-empty -m "Stamp VERSION"
+git push PGXNTOOL_TEST_UPSTREAM release-VERSION
+gh pr create --repo Postgres-Extensions/pgxntool-test \
+  --base master --head release-VERSION \
+  --title "Release VERSION" \
+  --body "Companion stamp for pgxntool release-VERSION."
+```
+
+Push both branches directly to the Postgres-Extensions remotes, never a
+fork -- this is also what makes the branch pairing below work, since
+pgxntool-test's CI matches a paired pgxntool branch by *account* as well as
+name.
+
+**Open the pgxntool-test PR first, or as close to simultaneously as
+possible.** pgxntool's `check-test-pr` CI job looks for a pgxntool-test PR
+with the same branch name on the same account; if pgxntool's CI runs before
+that PR exists, the pairing lookup can miss it.
+
+## Wait for CI, Then Hand Off for Review
+
+Monitor both PRs' CI (see the `/ci` skill / `monitor-ci.sh`, or
+`gh pr checks`). This skill does not merge either PR and does not apply any
+label -- both are explicit human actions. Report to the user:
+
+- Both PR URLs
+- CI status for each
+
+**If pgxntool's `check-test-pr` job fails** (the automatic pairing above
+should normally prevent this, but isn't guaranteed -- e.g. if the diff
+wasn't purely doc-only and the pgxntool-test PR wasn't visible in time):
+tell the user a maintainer needs to apply the `commit-with-no-tests` label
+to the pgxntool PR themselves. **This skill must never apply that label --
+it's maintainer-gated.**
+
+**Then stop and wait.** Do not proceed to
+[Tag Both Repos](#tag-both-repos) until the user confirms both PRs are
+merged.
+
+## Tag Both Repos
+
+Only after the user has confirmed both release PRs are merged. The tag must
+point at whatever actually landed on master -- not the pre-merge branch tip,
+which may differ if the PR was squashed or rebased on merge.
+
+```bash
+cd ../pgxntool
+git fetch PGXNTOOL_UPSTREAM master
+git checkout master
+git merge --ff-only PGXNTOOL_UPSTREAM/master
+head -n1 HISTORY.asc   # must read exactly VERSION -- stop if it doesn't
 git tag VERSION
-git push PGXNTOOL_TEST_UPSTREAM master
+git push PGXNTOOL_UPSTREAM VERSION
+```
+
+```bash
+cd ../pgxntool-test
+git fetch PGXNTOOL_TEST_UPSTREAM master
+git checkout master
+git merge --ff-only PGXNTOOL_TEST_UPSTREAM/master
+git tag VERSION
 git push PGXNTOOL_TEST_UPSTREAM VERSION
 ```
 
-This is independent of [Tag and Push pgxntool](#tag-and-push-pgxntool)
-(separate repo, separate remote) — see
-[Process Notes](#process-notes) above on running the two as parallel
-subagents.
+The `head -n1 HISTORY.asc` check exists because a squash/rebase merge can
+alter file content in ways a pre-merge check never saw -- confirm the merged
+result, not just the pre-merge branch, agrees with VERSION before tagging.
 
 ## Update the release Tag
 
@@ -316,9 +392,13 @@ git push PGXNTOOL_TEST_UPSTREAM -f refs/tags/release
 
 ## Verify and Report
 
+Both repos are already on master with the release branch merged in (see
+[Tag Both Repos](#tag-both-repos)); delete the now-merged local release
+branches:
+
 ```bash
-cd ../pgxntool && git checkout master
-cd ../pgxntool-test && git checkout master
+cd ../pgxntool && git branch -d release-VERSION
+cd ../pgxntool-test && git branch -d release-VERSION
 ```
 
 Output:
@@ -328,12 +408,12 @@ Release VERSION complete!
 
 pgxntool:
 - HISTORY.asc stamped with VERSION
-- Tag VERSION created and pushed to PGXNTOOL_UPSTREAM
+- Release PR merged, tag VERSION created and pushed to PGXNTOOL_UPSTREAM
 - release tag updated to VERSION
 
 pgxntool-test:
 - Stamp commit created
-- Tag VERSION created and pushed to PGXNTOOL_TEST_UPSTREAM
+- Release PR merged, tag VERSION created and pushed to PGXNTOOL_TEST_UPSTREAM
 - release tag updated to VERSION
 
 Verify releases:
@@ -352,14 +432,18 @@ Verify releases:
 - Provide recovery instructions
 - Note which repo failed and what state the other repo is in
 
+**If a release PR's CI fails:** fix the problem on the `release-VERSION`
+branch and push again (`git commit --amend` or a follow-up commit) -- do not
+close it and open a new PR, and do not fall back to pushing straight to
+master.
+
 **Rollback guidance if partial failure:**
-- If pgxntool push succeeded but pgxntool-test failed (or vice versa --
-  if these ran as parallel subagents, either can fail independently of
-  the other):
-  - Note which repo already succeeded
-  - Provide commands to manually complete the other repo's release
-- If failure during push:
-  - Local state is complete, just need to retry push
+- If one repo's PR is merged but the other isn't yet: this is expected with
+  a manual-merge workflow, not a failure -- wait for the user to merge the
+  second one before running
+  [Tag Both Repos](#tag-both-repos). Don't tag one repo without the other.
+- If pushing the release branch itself fails: local state is complete, just
+  need to retry the push.
 
 **Common issues:**
 - "Push rejected": Upstream has changes. Need to pull first.
