@@ -1,32 +1,64 @@
 #!/usr/bin/env bats
 
-# Test: pgxntool-version
+# Test: misc small base.mk behaviors
 #
-# Tests bin/version's HISTORY.asc parsing in isolation (a stamped
-# version, an unreleased "STABLE" checkout, a missing file, an empty file,
-# malformed first lines), that `make pgxntool-version` is correctly wired to
-# it inside a real embedded pgxntool copy, and (CRITICAL -- see comment
-# below) that it matches the actual, unmodified pgxntool checkout this test
-# suite is running against.
+# Grouped into one suite because each is small enough that a dedicated
+# suite file isn't worth the per-suite overhead -- every test below only
+# needs a plain foundation checkout, no suite-specific fixture.
+#
+# - base.mk double-inclusion safety (issue #50): base.mk can end up
+#   included twice in one `make` run: an extension's own .mk module
+#   includes it, and the extension's Makefile includes it directly too.
+#   Without a guard, every target gets redefined, producing
+#   overriding-recipe/ignoring-old-recipe warnings at parse time. This is
+#   reproduced here by writing a throwaway Makefile that includes
+#   pgxntool/base.mk directly AND via an intermediate module -- mirroring
+#   the real-world scenario from the issue -- and confirming make parses it
+#   without those warnings. (Confirmed by hand that removing the
+#   ifndef/endif guard reproduces dozens of these warnings for this exact
+#   setup.)
+# - bin/version's HISTORY.asc parsing (in isolation -- a stamped version,
+#   an unreleased "STABLE" checkout, a missing file, an empty file,
+#   malformed first lines), that `make pgxntool-version` is correctly
+#   wired to it inside a real embedded pgxntool copy, and (CRITICAL -- see
+#   comment below) that it matches the actual, unmodified pgxntool checkout
+#   this test suite is running against.
 
 load ../lib/helpers
 
 setup_file() {
   setup_topdir
 
-  # Independent test - gets its own isolated environment with foundation TEST_REPO
-  load_test_env "pgxntool-version"
+  load_test_env "base-mk-misc"
   ensure_foundation "$TEST_DIR"
 
   export VERSION_SCRIPT="$PGXNREPO/bin/version"
-  export SCRATCH_DIR="$TEST_DIR/pgxntool-version-tests"
+  export SCRATCH_DIR="$TEST_DIR/base-mk-misc-scratch"
 }
 
 setup() {
-  load_test_env "pgxntool-version"
+  load_test_env "base-mk-misc"
+  cd_test_env
 
   rm -rf "$SCRATCH_DIR"
   mkdir -p "$SCRATCH_DIR"
+}
+
+@test "base.mk tolerates being included twice in one make run" {
+  cat > double-include-module.mk <<'EOF'
+include pgxntool/base.mk
+EOF
+  cat > double-include-test.mk <<'EOF'
+include pgxntool/base.mk
+include double-include-module.mk
+EOF
+
+  run make -f double-include-test.mk -n all 2>&1
+  assert_success
+  assert_not_contains "$output" "overriding recipe"
+  assert_not_contains "$output" "ignoring old recipe"
+
+  rm -f double-include-module.mk double-include-test.mk
 }
 
 @test "bin/version prints a stamped version number" {
