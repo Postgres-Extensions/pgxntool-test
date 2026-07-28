@@ -63,6 +63,18 @@ The `/commit` skill lives in `.claude/skills/commit/` with a preprocessing scrip
 The `/test` skill lives in `.claude/skills/test/` with a TAP-parsing test runner.
 Other commands (worktree, pr, pgxntool-update) remain in `.claude/commands/`.
 
+## Skill and Process Doc Quality
+
+These rules apply to `SKILL.md` files, command markdown, and any other process doc under `.claude/`.
+
+**CRITICAL**: After rewriting or restructuring part of a skill or process doc, re-read the entire file straight through, as if you were the one executing it, before pushing. A step's instructions must never contradict another section of the same file (e.g., one section pushing repo A before repo B, another section saying B must go first). Large, late-stage rewrites of a single section are the most common place for this kind of self-contradiction to hide, because editing section-by-section doesn't surface whether the doc still agrees with itself end-to-end.
+
+**CRITICAL**: A skill or process doc must never instruct an action that contradicts this repo's own `CLAUDE.md` policies (e.g., committing or pushing without the required confirmation gate, pushing without triggering the required CI-monitoring step, or skipping a required audit step before a branch is deleted). Check new or rewritten skill steps against `CLAUDE.md` directly, not from memory.
+
+**RULE**: Any point where a skill or process doc asks the user a yes/no or multiple-choice question must define the follow-up for every answer, not just the common-path one. A branch that just says "continue" without defining what continuing does is incomplete.
+
+**RULE**: Markdown fenced code blocks must have a blank line before and after the fence, and every fence must carry a language tag (` ```bash `, not a bare ` ``` `).
+
 ## What This Repo Is
 
 **pgxntool-test** is the test harness for validating **../pgxntool/** (a PostgreSQL extension build framework).
@@ -161,6 +173,10 @@ Note: "state modifications" here means changes to an already-initialized test en
 2. **Tests that also modify state** (e.g., `make results` to test that command works, where the output is also used by later tests): Keep as `@test`. Add a comment noting what downstream tests depend on the state change.
 3. **Never use `skip` for "already done" state modifications.** Make them idempotent with conditionals that simply don't re-run when unnecessary (no skip, no `@test`). Rebuilding state every time is too expensive, so reuse is important - but that logic belongs in non-test code.
 4. **Abort early on environment setup failures.** Since we never commit with failing tests, it's better to abort the suite immediately when environment setup fails rather than continuing and collecting potentially many false failures. A failed state modification can invalidate all downstream tests, and the false failures just obscure the real problem.
+
+### Reuse Canonical Test Helpers
+
+**RULE**: Before deriving a new path or piece of state in a `.bats` test (e.g., the pgxntool checkout location), grep sibling `.bats` files for how they already solve it, and reuse the existing helper/variable (e.g. `PGXNREPO` from `load_test_env`) instead of deriving it independently (e.g. via `$TOPDIR/../pgxntool`). A configured non-default checkout should not silently cause the wrong thing to be tested.
 
 ### Template Design Principles
 
