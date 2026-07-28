@@ -5,7 +5,7 @@ description: |
   HISTORY.asc updates, and pushing to the main Postgres-Extensions GitHub repos.
 
   Use when user says "release", "create release", "tag version", or "/release"
-allowed-tools: Bash(.claude/skills/release/scripts/release-preflight.sh:*), Bash(git tag:*), Bash(git commit:*), Bash(git push:*), Bash(git checkout:*), Bash(git status:*), Bash(git log:*), Bash(git remote:*), Bash(git rev-parse:*), Bash(git branch:*), Bash(git fetch:*), Bash(git diff:*), Bash(git merge:*), Bash(gh pr create:*), Bash(gh pr view:*), Bash(gh pr checks:*), Bash(gh pr close:*), Bash(.claude/skills/ci/scripts/monitor-ci.sh:*), Read, Edit
+allowed-tools: Bash(.claude/skills/release/scripts/release-preflight.sh:*), Bash(git tag:*), Bash(git commit:*), Bash(git push:*), Bash(git checkout:*), Bash(git status:*), Bash(git log:*), Bash(git remote:*), Bash(git rev-parse:*), Bash(git branch:*), Bash(git fetch:*), Bash(git diff:*), Bash(git merge:*), Bash(gh pr create:*), Bash(gh pr view:*), Bash(gh pr checks:*), Bash(gh pr close:*), Bash(gh run list:*), Bash(gh run view:*), Bash(grep:*), Bash(.claude/skills/ci/scripts/monitor-ci.sh:*), Read, Edit
 ---
 
 # /release
@@ -121,6 +121,54 @@ The script checks:
 - `PGXNTOOL_UPSTREAM` - remote name for pgxntool (e.g., "upstream")
 - `PGXNTOOL_TEST_UPSTREAM` - remote name for pgxntool-test (e.g., "upstream")
 
+## Verify CI Runs test-all
+
+This whole release process leans on pgxntool-test's own CI (triggered by the
+companion PR in
+[Open Release Pull Requests](#open-release-pull-requests)) to give the
+release content real Postgres test coverage -- see that section for why.
+That guarantee is only as good as `run-tests.yml` actually running the full
+suite, and this has silently regressed before (it was found running only
+`make test`, silently excluding everything in `test/extra/`). Check both the
+workflow definition and a recent real run before trusting it -- don't rely
+on the YAML alone.
+
+**Check the workflow definition:**
+
+```bash
+grep -n "run: make" ../pgxntool-test/.github/workflows/run-tests.yml
+```
+
+The `Run tests` step must read `make test-all`. If it reads `make test` or
+`make test-extra`, that's the same bug recurring -- stop and fix it (or
+confirm someone already is) before continuing.
+
+**Check a recent actual run agrees with the code.** `make test` and `make
+test-extra` both print a `Tip: Use 'make test-extra' ... or 'make test-all'
+for everything` banner before and after the suite; `make test-all` never
+prints it. Pull the most recent successful CI run's logs and confirm that
+banner is absent:
+
+```bash
+run_id=$(gh run list --repo Postgres-Extensions/pgxntool-test --workflow CI \
+  --status success --limit 1 --json databaseId --jq '.[0].databaseId')
+gh run view "$run_id" --repo Postgres-Extensions/pgxntool-test --log \
+  | grep -i "Use 'make test-extra'"
+```
+
+Any match means the actual run did NOT use `test-all`, regardless of what
+the checked-in YAML says -- the workflow the runner executed and the
+workflow on record can differ (e.g. `run-tests.yml` is a reusable workflow
+pulled from a specific ref -- see its own `CROSS-REPO REUSABLE WORKFLOW`
+comment in `../pgxntool/.github/workflows/ci.yml`). No match is a good sign
+but confirm it's actually checking the right step's output, not silently
+matching nothing due to a `gh` error.
+
+**If either check fails:** STOP. This is a testing-infrastructure gap, not
+something to route around release-by-release. Fix `run-tests.yml` (or hand
+this off, e.g. to a dedicated follow-up PR/agent) and only continue the
+release once both checks pass.
+
 ## Launch API Documentation Review Agents
 
 Immediately after pre-flight passes, launch the review agents below via the
@@ -220,11 +268,13 @@ findings in hand before that happens.
 For each finding:
 
 - **Since-last-release findings (review A):** a behavior change without a
-  STABLE entry MUST be fixed before continuing. Either add the missing entry
-  to the STABLE section now (folded into the HISTORY.asc edit below), or ask
-  the user how they want it documented — do not release with an undocumented
-  behavior change. API items added/removed by these commits but missing from
-  README.asc must also be fixed (edit README.asc) before continuing.
+  STABLE entry means something already went wrong upstream of this release
+  (it should have been documented when it merged) -- **always ask the user**
+  how they want it documented; never silently write the entry yourself. Fold
+  their answer into the STABLE section as part of the HISTORY.asc edit below.
+  Do not release with an undocumented behavior change. The same goes for API
+  items added/removed by these commits but missing from README.asc: ask, then
+  edit README.asc, before continuing.
 - **Comprehensive findings (review B):** these may include pre-existing
   drift unrelated to this release. Show the findings to the user and ask
   whether to fix now (as part of this release), file as follow-up work, or
@@ -240,10 +290,9 @@ Summarize what was found and how each item was resolved before moving on.
 
 ### Create the release branch
 
-Both repos get a same-named branch (see **Release branch** in Terminology).
-Using the same name on both, pushed to the same (upstream) account, is what
-lets pgxntool-test's CI automatically pair its release PR with pgxntool's --
-see [Open Release Pull Requests](#open-release-pull-requests).
+Both repos get a same-named branch (see **Release branch** in Terminology;
+the empty pgxntool-test PR is strictly to trigger a CI run -- see
+[Open Release Pull Requests](#open-release-pull-requests)).
 
 ```bash
 cd ../pgxntool && git checkout -b release-VERSION
@@ -257,12 +306,12 @@ By this point (the gate in
 every entry this release needs is already in place. Before stamping, sort
 those entries -- most important first -- into:
 
-- Breaking changes -- anything that could break an existing consumer's
-  build, tests, or behavior
-- Non-breaking behavior changes -- existing behavior changed, but nothing
-  should break as a result (expect this category to be rare)
-- New features/additions -- new targets, variables, scripts, etc.
-- Bugfixes
+1. Breaking changes -- anything that could break an existing consumer's
+   build, tests, or behavior
+2. Non-breaking behavior changes -- existing behavior changed, but nothing
+   should break as a result (expect this category to be rare)
+3. New features/additions -- new targets, variables, scripts, etc.
+4. Bugfixes
 
 An entry that fits more than one category goes under the highest (earliest)
 one that applies. This is a one-time pass over *this release's* entries
@@ -338,7 +387,10 @@ pgxntool-test's CI instead of pgxntool's.
 **This means the pgxntool-test PR exists purely to trigger that test run --
 it must never be merged.** It changes nothing pgxntool-test actually wants
 on its master. Say so explicitly in the PR itself so nobody merges it by
-habit; close it (don't merge it) once its CI is green -- see
+habit. Closing it is not an automatic action just because its CI went
+green -- point the user at the CI run and wait for their explicit
+go-ahead, same as merging pgxntool's PR is a human action, not this
+skill's -- see
 [Wait for CI, Then Hand Off for Review](#wait-for-ci-then-hand-off-for-review).
 
 (Push order between the two repos doesn't matter for pgxntool's own
@@ -487,9 +539,16 @@ git push PGXNTOOL_TEST_UPSTREAM -f refs/tags/release
 
 pgxntool is already on master with the release branch merged in (see
 [Tag Both Repos](#tag-both-repos)); delete its now-merged local release
-branch. pgxntool-test's release branch was never merged (see
-[Open Release Pull Requests](#open-release-pull-requests)) -- close its
-CI-trigger PR and delete the branch on both ends:
+branch.
+
+pgxntool-test's release branch was never merged (see
+[Open Release Pull Requests](#open-release-pull-requests)). Before closing
+its CI-trigger PR, point the user at its CI run and ask them to confirm
+it's OK to close as part of finishing the release -- this is a distinct
+confirmation from the CI-passed check in
+[Wait for CI, Then Hand Off for Review](#wait-for-ci-then-hand-off-for-review),
+not implied by it. Once confirmed, close it and delete the branch on both
+ends:
 
 ```bash
 cd ../pgxntool && git branch -d release-VERSION
