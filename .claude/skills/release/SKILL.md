@@ -18,16 +18,17 @@ Create a release for pgxntool and pgxntool-test.
 
 - **STABLE section**: The heading in `HISTORY.asc` where unreleased changes are documented. During a release, this heading is replaced with the version number. This has nothing to do with git branches.
 - **UPSTREAM_REMOTE**: The local git remote pointing to the main project repos at `https://github.com/Postgres-Extensions/`. Releases must be pushed here -- never to a fork. The remote name varies; it is identified by URL pattern in the pre-flight script.
-- **User-facing API surface**: what the review agents launched in **Launch
-  API Documentation Review Agents** treat as "the documented API" of
-  pgxntool. The canonical, evolving definition lives in this repo's own
-  `CLAUDE.md`, under "User-Facing API Surface of pgxntool" (not
-  `../pgxntool/CLAUDE.md` — that file is user-facing docs for extension
-  developers, not dev/audit tooling docs). Read that section fresh before
-  launching those agents and give them its current text verbatim as their
-  scope, since it's expected to change over time. When a reviewer hits a
-  case that doesn't clearly fit, flag it for the user rather than guessing,
-  and consider updating that section afterward.
+- **User-facing API surface**: what the review agents launched in
+  [Launch API Documentation Review Agents](#launch-api-documentation-review-agents)
+  treat as "the documented API" of pgxntool. The canonical, evolving
+  definition lives in this repo's own `CLAUDE.md`, under "User-Facing API
+  Surface of pgxntool" (not `../pgxntool/CLAUDE.md` — that file is
+  user-facing docs for extension developers, not dev/audit tooling docs).
+  Read that section fresh before launching those agents and give them its
+  current text verbatim as their scope, since it's expected to change over
+  time. When a reviewer hits a case that doesn't clearly fit, flag it for
+  the user rather than guessing, and consider updating that section
+  afterward.
 - **Discovering make targets**: the definition's target list should be
   found with `make list` (a target pgxntool itself provides — see
   `base.mk`), not by grepping for target definitions, since pattern rules
@@ -45,25 +46,34 @@ Create a release for pgxntool and pgxntool-test.
 
 ## Process Notes
 
-- **Steps below are headings, not numbers.** Earlier versions of this skill
-  numbered each step and cross-referenced them as "Step 6", "Step 2", etc.
-  That broke every time a step was inserted, removed, or reordered -- every
-  reference elsewhere in the document had to be found and renumbered by
-  hand, and it was easy to miss one. Steps are referenced by name instead
-  (bolded to match their heading text), so the document stays correct
-  regardless of how steps shift around.
+- **Steps below are headings, referenced by anchor link.** Earlier versions
+  of this skill numbered each step and cross-referenced them as "Step 6",
+  "Step 2", etc. That broke every time a step was inserted, removed, or
+  reordered -- every reference elsewhere in the document had to be found
+  and renumbered by hand, and it was easy to miss one. A later revision
+  switched to bolding the step's heading text instead, which fixed the
+  renumbering problem but was still just prose -- nothing stopped it from
+  drifting out of sync with the actual heading, and it gave a human reading
+  this on GitHub nothing to click. Steps are referenced by a real markdown
+  link to the heading's anchor instead (`[Heading Text](#heading-text)`),
+  which is both unambiguous (a stale link can be checked by clicking it)
+  and clickable when this file is viewed on GitHub.
 - **Parallelize independent work.** The steps below are written in the order
   they're normally reasoned about, but that doesn't mean everything has to
   run one at a time. Where two pieces of work don't depend on each other's
   output, hand them to separate subagents and let them run concurrently
-  instead of sequentially -- e.g. the two review efforts in **Launch API
-  Documentation Review Agents** already run as parallel background agents,
-  and **Tag and Push pgxntool** / **Stamp, Tag, and Push pgxntool-test** are
-  two independent repos that can likewise run at the same time rather than
-  one after the other. Anything that reads or depends on another step's
-  output (e.g. **Sanity-Check bin/version Output** needs the stamp from
-  **Update HISTORY.asc and Commit** to already exist) must still wait for
-  that dependency first.
+  instead of sequentially -- e.g. the two review efforts in
+  [Launch API Documentation Review Agents](#launch-api-documentation-review-agents)
+  already run as parallel background agents, and
+  [Tag and Push pgxntool](#tag-and-push-pgxntool) /
+  [Stamp, Tag, and Push pgxntool-test](#stamp-tag-and-push-pgxntool-test)
+  are two independent repos that can likewise run at the same time rather
+  than one after the other. Anything that reads or depends on another
+  step's output (e.g.
+  [Sanity-Check bin/version Output](#sanity-check-binversion-output) needs
+  the stamp from
+  [Update HISTORY.asc and Commit](#update-historyasc-and-commit) to already
+  exist) must still wait for that dependency first.
 
 ---
 
@@ -95,13 +105,15 @@ The script checks:
 
 Immediately after pre-flight passes, launch the review agents below via the
 Agent tool, running in the background. This happens early so the review has
-time to finish while the version number is determined and HISTORY.asc is
-confirmed (below).
+time to finish while
+[Determine Version Number](#determine-version-number) and
+[Confirm HISTORY.asc](#confirm-historyasc) (below) are worked through.
 
-**Gate: do not proceed past Update HISTORY.asc and Commit (below) — i.e. do
-not make any release-related change to git — until both sets of findings
-below have been retrieved and inspected.** See Inspect API Documentation
-Review Findings.
+**Gate: do not proceed past
+[Update HISTORY.asc and Commit](#update-historyasc-and-commit) — i.e. do not
+make any release-related change to git — until both sets of findings below
+have been retrieved and inspected.** See
+[Inspect API Documentation Review Findings](#inspect-api-documentation-review-findings).
 
 Launch two independent review efforts. Each may be one agent or a small set
 of agents if splitting the surface area (e.g. by file) makes sense; give
@@ -165,9 +177,11 @@ Read `../pgxntool/HISTORY.asc` and show the user what's in the STABLE section.
 
 ## Inspect API Documentation Review Findings
 
-Retrieve the results from both review efforts launched in **Launch API
-Documentation Review Agents** (wait for them if they haven't finished). This
-is a hard gate: **do not proceed to Update HISTORY.asc and Commit until this
+Retrieve the results from both review efforts launched in
+[Launch API Documentation Review Agents](#launch-api-documentation-review-agents)
+(wait for them if they haven't finished). This is a hard gate: **do not
+proceed to
+[Update HISTORY.asc and Commit](#update-historyasc-and-commit) until this
 step is complete** — that's the first release step that changes git state,
 and the whole point of launching the reviews early was to have their
 findings in hand before that happens.
@@ -195,7 +209,8 @@ Summarize what was found and how each item was resolved before moving on.
 
 ### Reorder the STABLE section entries by importance
 
-By this point (the gate in **Inspect API Documentation Review Findings**)
+By this point (the gate in
+[Inspect API Documentation Review Findings](#inspect-api-documentation-review-findings))
 every entry this release needs is already in place. Before stamping, sort
 those entries -- most important first -- into:
 
@@ -247,7 +262,8 @@ directly against the just-stamped, unmodified `../pgxntool` checkout:
 ```
 
 **The output must be exactly VERSION.** If it's `STABLE`, an old version, or
-an error instead, the stamp in **Update HISTORY.asc and Commit** didn't take
+an error instead, the stamp in
+[Update HISTORY.asc and Commit](#update-historyasc-and-commit) didn't take
 effect correctly (or `bin/version` itself regressed). Stop and fix it -- do
 not tag or push a release that doesn't agree with this.
 
@@ -276,8 +292,10 @@ git push PGXNTOOL_TEST_UPSTREAM master
 git push PGXNTOOL_TEST_UPSTREAM VERSION
 ```
 
-This is independent of **Tag and Push pgxntool** (separate repo, separate
-remote) — see Process Notes above on running the two as parallel subagents.
+This is independent of [Tag and Push pgxntool](#tag-and-push-pgxntool)
+(separate repo, separate remote) — see
+[Process Notes](#process-notes) above on running the two as parallel
+subagents.
 
 ## Update the release Tag
 
