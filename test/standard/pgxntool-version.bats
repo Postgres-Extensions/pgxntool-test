@@ -18,7 +18,7 @@ setup_file() {
   load_test_env "pgxntool-version"
   ensure_foundation "$TEST_DIR"
 
-  export VERSION_SCRIPT="$TOPDIR/../pgxntool/bin/version"
+  export VERSION_SCRIPT="$PGXNREPO/bin/version"
   export SCRATCH_DIR="$TEST_DIR/pgxntool-version-tests"
 }
 
@@ -70,9 +70,9 @@ setup() {
 }
 
 # CRITICAL: this test must run bin/version directly against the real,
-# unmodified $TOPDIR/../pgxntool checkout -- never a scratch file, an rsync'd
-# copy, or a cached foundation snapshot. A release PR stamps HISTORY.asc with
-# the real version and relies on CI running this exact check to catch a bad
+# unmodified $PGXNREPO checkout -- never a scratch file, an rsync'd copy, or
+# a cached foundation snapshot. A release PR stamps HISTORY.asc with the
+# real version and relies on CI running this exact check to catch a bad
 # stamp before it's tagged and pushed -- that guarantee only holds if the
 # check reads the literal, current pgxntool/HISTORY.asc. This matters most
 # precisely when the top line is NOT "STABLE": that's the release commit
@@ -81,7 +81,7 @@ setup() {
 # non-empty check.
 @test "bin/version matches the current pgxntool/HISTORY.asc with no modifications" {
   local expected
-  expected=$(head -n1 "$TOPDIR/../pgxntool/HISTORY.asc")
+  expected=$(head -n1 "$PGXNREPO/HISTORY.asc")
 
   run "$VERSION_SCRIPT"
   assert_success

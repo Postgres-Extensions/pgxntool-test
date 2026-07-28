@@ -82,6 +82,12 @@ Create a release for pgxntool and pgxntool-test.
 - **This skill never merges its own release PRs, and never applies the
   `commit-with-no-tests` label.** Both are explicit human actions -- see
   [Wait for CI, Then Hand Off for Review](#wait-for-ci-then-hand-off-for-review).
+- **The commits in this skill don't need a separate per-commit confirmation
+  gate.** Invoking `/release` at all is the user's explicit instruction to
+  run this whole documented flow, commits included -- and none of those
+  commits touch master directly; they land on `release-VERSION` and only
+  reach master through a human-reviewed, human-merged PR (see
+  [Open Release Pull Requests](#open-release-pull-requests)).
 
 ---
 
@@ -171,6 +177,7 @@ Use AskUserQuestion:
 - Provide options based on current version in pgxntool's HISTORY.asc
 
 **Then re-run pre-flight** with the chosen version to validate it:
+
 ```bash
 .claude/skills/release/scripts/release-preflight.sh VERSION
 ```
@@ -179,9 +186,19 @@ Use AskUserQuestion:
 
 Read `../pgxntool/HISTORY.asc` and show the user what's in the STABLE section.
 
-**If no STABLE section exists:**
-- Warn: "No STABLE section found. No changes are documented for this release."
-- Ask user if they want to continue using AskUserQuestion.
+**If no STABLE section exists:** later,
+[Stamp the version](#stamp-the-version) can only replace an existing
+`STABLE` heading -- there's nothing to continue *to* without one, and
+[Sanity-Check bin/version Output](#sanity-check-binversion-output) will
+fail if it's missing. Ask the user (via AskUserQuestion) to pick one:
+- Add a `STABLE` section to `HISTORY.asc` now (even if it ends up
+  documenting nothing but a header for this release), then continue.
+- Stop the release here.
+
+Do not proceed to
+[Inspect API Documentation Review Findings](#inspect-api-documentation-review-findings)
+without a `STABLE` section actually in hand -- "continue" only means
+something once one exists.
 
 ## Inspect API Documentation Review Findings
 
@@ -252,15 +269,19 @@ genuinely unclear, ask the user rather than guessing.
 Edit `../pgxntool/HISTORY.asc`: replace the `STABLE` heading with the version number.
 
 Replace:
-```
+
+```text
 STABLE
 ------
 ```
+
 With:
-```
+
+```text
 VERSION
 -------
 ```
+
 (Adjust dashes to match version string length)
 
 ### Commit
@@ -295,14 +316,9 @@ versions of this skill did) never runs CI at all, silently skipping every
 check this repo relies on. Instead, push the release branch and open a PR
 in each repo, same as any other change.
 
-```bash
-cd ../pgxntool
-git push PGXNTOOL_UPSTREAM release-VERSION
-gh pr create --repo Postgres-Extensions/pgxntool \
-  --base master --head release-VERSION \
-  --title "Release VERSION" \
-  --body "Stamps HISTORY.asc for VERSION. Companion: pgxntool-test release-VERSION."
-```
+**Open the pgxntool-test PR first.** pgxntool's `check-test-pr` CI job looks
+for a pgxntool-test PR with the same branch name on the same account; if
+pgxntool's CI runs before that PR exists, the pairing lookup can miss it.
 
 ```bash
 cd ../pgxntool-test
@@ -314,21 +330,40 @@ gh pr create --repo Postgres-Extensions/pgxntool-test \
   --body "Companion stamp for pgxntool release-VERSION."
 ```
 
+Per this project's CI-monitoring rule, immediately start a background
+monitor for that push (exact SHA, not `--branch`, to avoid a race with any
+other concurrent push on this branch name):
+
+```bash
+bash .claude/skills/ci/scripts/monitor-ci.sh pgxntool-test release-VERSION <pgxntool-test-sha> ""
+```
+
+Then push pgxntool and open its PR:
+
+```bash
+cd ../pgxntool
+git push PGXNTOOL_UPSTREAM release-VERSION
+gh pr create --repo Postgres-Extensions/pgxntool \
+  --base master --head release-VERSION \
+  --title "Release VERSION" \
+  --body "Stamps HISTORY.asc for VERSION. Companion: pgxntool-test release-VERSION."
+```
+
+```bash
+bash .claude/skills/ci/scripts/monitor-ci.sh pgxntool release-VERSION "" <pgxntool-sha>
+```
+
 Push both branches directly to the Postgres-Extensions remotes, never a
-fork -- this is also what makes the branch pairing below work, since
+fork -- this is also what makes the branch pairing work, since
 pgxntool-test's CI matches a paired pgxntool branch by *account* as well as
 name.
 
-**Open the pgxntool-test PR first, or as close to simultaneously as
-possible.** pgxntool's `check-test-pr` CI job looks for a pgxntool-test PR
-with the same branch name on the same account; if pgxntool's CI runs before
-that PR exists, the pairing lookup can miss it.
-
 ## Wait for CI, Then Hand Off for Review
 
-Monitor both PRs' CI (see the `/ci` skill / `monitor-ci.sh`, or
-`gh pr checks`). This skill does not merge either PR and does not apply any
-label -- both are explicit human actions. Report to the user:
+Wait for the results from the two `monitor-ci.sh` background runs started in
+[Open Release Pull Requests](#open-release-pull-requests). This skill does
+not merge either PR and does not apply any label -- both are explicit human
+actions. Report to the user:
 
 - Both PR URLs
 - CI status for each
@@ -349,6 +384,15 @@ merged.
 Only after the user has confirmed both release PRs are merged. The tag must
 point at whatever actually landed on master -- not the pre-merge branch tip,
 which may differ if the PR was squashed or rebased on merge.
+
+This step rebases local state onto a freshly fetched master in both repos,
+so per this repo's CLAUDE.md, run the cross-reference audit first:
+
+```bash
+bash .claude/skills/crossref-audit/scripts/audit.sh ../pgxntool .
+```
+
+Follow its output if it flags anything; only continue once it's clean.
 
 ```bash
 cd ../pgxntool
@@ -403,7 +447,7 @@ cd ../pgxntool-test && git branch -d release-VERSION
 
 Output:
 
-```
+```text
 Release VERSION complete!
 
 pgxntool:
@@ -435,7 +479,8 @@ Verify releases:
 **If a release PR's CI fails:** fix the problem on the `release-VERSION`
 branch and push again (`git commit --amend` or a follow-up commit) -- do not
 close it and open a new PR, and do not fall back to pushing straight to
-master.
+master. Immediately re-run `monitor-ci.sh` for that push, same as in
+[Open Release Pull Requests](#open-release-pull-requests).
 
 **Rollback guidance if partial failure:**
 - If one repo's PR is merged but the other isn't yet: this is expected with
