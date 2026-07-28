@@ -316,9 +316,25 @@ versions of this skill did) never runs CI at all, silently skipping every
 check this repo relies on. Instead, push the release branch and open a PR
 in each repo, same as any other change.
 
-**Open the pgxntool-test PR first.** pgxntool's `check-test-pr` CI job looks
-for a pgxntool-test PR with the same branch name on the same account; if
-pgxntool's CI runs before that PR exists, the pairing lookup can miss it.
+**Push order doesn't matter here, and pushing pgxntool-test first is not a
+safeguard** -- an earlier draft of this step claimed it was, which was
+wrong. pgxntool's `check-test-pr` job checks doc-only status *first*, purely
+from this PR's own changed-file list -- no cross-repo lookup, no ordering
+or timing dependency at all -- and only falls through to searching for a
+paired pgxntool-test PR if that's false. A release-stamp PR only ever
+touches `HISTORY.asc`/`README.asc`/`README.html`, all covered by
+`DOC_EXTENSIONS`, so it should hit that bypass every time regardless of
+which repo's PR goes up first. (The pairing search existing at all is a
+general, latent race in `check-test-pr` for *any* paired PR, release or
+not -- ordinary PRs just tend to survive it better since a failed first CI
+run gets fixed by a follow-up push, whereas a release PR is pushed once and
+not iterated on nearly as much. Worth its own issue if it ever actually
+bites; not something this skill needs to work around, since it never
+depends on the pairing search succeeding.)
+
+Push both branches directly to the Postgres-Extensions remotes, never a
+fork, and open both PRs -- these can run as parallel subagents (see Process
+Notes):
 
 ```bash
 cd ../pgxntool-test
@@ -330,16 +346,6 @@ gh pr create --repo Postgres-Extensions/pgxntool-test \
   --body "Companion stamp for pgxntool release-VERSION."
 ```
 
-Per this project's CI-monitoring rule, immediately start a background
-monitor for that push (exact SHA, not `--branch`, to avoid a race with any
-other concurrent push on this branch name):
-
-```bash
-bash .claude/skills/ci/scripts/monitor-ci.sh pgxntool-test release-VERSION <pgxntool-test-sha> ""
-```
-
-Then push pgxntool and open its PR:
-
 ```bash
 cd ../pgxntool
 git push PGXNTOOL_UPSTREAM release-VERSION
@@ -349,14 +355,18 @@ gh pr create --repo Postgres-Extensions/pgxntool \
   --body "Stamps HISTORY.asc for VERSION. Companion: pgxntool-test release-VERSION."
 ```
 
+Per this project's CI-monitoring rule, immediately start a background
+monitor for each push (exact SHA, not `--branch`, to avoid a race with any
+other concurrent push on this branch name -- one monitor per repo, not run
+sequentially):
+
+```bash
+bash .claude/skills/ci/scripts/monitor-ci.sh pgxntool-test release-VERSION <pgxntool-test-sha> ""
+```
+
 ```bash
 bash .claude/skills/ci/scripts/monitor-ci.sh pgxntool release-VERSION "" <pgxntool-sha>
 ```
-
-Push both branches directly to the Postgres-Extensions remotes, never a
-fork -- this is also what makes the branch pairing work, since
-pgxntool-test's CI matches a paired pgxntool branch by *account* as well as
-name.
 
 ## Wait for CI, Then Hand Off for Review
 
@@ -368,9 +378,10 @@ actions. Report to the user:
 - Both PR URLs
 - CI status for each
 
-**If pgxntool's `check-test-pr` job fails** (the automatic pairing above
-should normally prevent this, but isn't guaranteed -- e.g. if the diff
-wasn't purely doc-only and the pgxntool-test PR wasn't visible in time):
+**If pgxntool's `check-test-pr` job fails** (shouldn't happen for a
+doc-only release diff -- see
+[Open Release Pull Requests](#open-release-pull-requests) -- but isn't
+impossible, e.g. if this release ends up needing a non-doc file change):
 tell the user a maintainer needs to apply the `commit-with-no-tests` label
 to the pgxntool PR themselves. **This skill must never apply that label --
 it's maintainer-gated.**
