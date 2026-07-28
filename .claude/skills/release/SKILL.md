@@ -18,15 +18,16 @@ Create a release for pgxntool and pgxntool-test.
 
 - **STABLE section**: The heading in `HISTORY.asc` where unreleased changes are documented. During a release, this heading is replaced with the version number. This has nothing to do with git branches.
 - **UPSTREAM_REMOTE**: The local git remote pointing to the main project repos at `https://github.com/Postgres-Extensions/`. Releases must be pushed here -- never to a fork. The remote name varies; it is identified by URL pattern in the pre-flight script.
-- **User-facing API surface**: what the Step 2 review agents treat as "the
-  documented API" of pgxntool. The canonical, evolving definition lives in
-  this repo's own `CLAUDE.md`, under "User-Facing API Surface of pgxntool"
-  (not `../pgxntool/CLAUDE.md` — that file is user-facing docs for
-  extension developers, not dev/audit tooling docs). Read that section
-  fresh before launching the Step 2 agents and give them its current text
-  verbatim as their scope, since it's expected to change over time. When a
-  reviewer hits a case that doesn't clearly fit, flag it for the user
-  rather than guessing, and consider updating that section afterward.
+- **User-facing API surface**: what the review agents launched in **Launch
+  API Documentation Review Agents** treat as "the documented API" of
+  pgxntool. The canonical, evolving definition lives in this repo's own
+  `CLAUDE.md`, under "User-Facing API Surface of pgxntool" (not
+  `../pgxntool/CLAUDE.md` — that file is user-facing docs for extension
+  developers, not dev/audit tooling docs). Read that section fresh before
+  launching those agents and give them its current text verbatim as their
+  scope, since it's expected to change over time. When a reviewer hits a
+  case that doesn't clearly fit, flag it for the user rather than guessing,
+  and consider updating that section afterward.
 - **Discovering make targets**: the definition's target list should be
   found with `make list` (a target pgxntool itself provides — see
   `base.mk`), not by grepping for target definitions, since pattern rules
@@ -42,9 +43,31 @@ Create a release for pgxntool and pgxntool-test.
     `test/install/*.sql` exist) won't show up this way. Read `base.mk`
     directly for these rather than relying on `make list` alone.
 
+## Process Notes
+
+- **Steps below are headings, not numbers.** Earlier versions of this skill
+  numbered each step and cross-referenced them as "Step 6", "Step 2", etc.
+  That broke every time a step was inserted, removed, or reordered -- every
+  reference elsewhere in the document had to be found and renumbered by
+  hand, and it was easy to miss one. Steps are referenced by name instead
+  (bolded to match their heading text), so the document stays correct
+  regardless of how steps shift around.
+- **Parallelize independent work.** The steps below are written in the order
+  they're normally reasoned about, but that doesn't mean everything has to
+  run one at a time. Where two pieces of work don't depend on each other's
+  output, hand them to separate subagents and let them run concurrently
+  instead of sequentially -- e.g. the two review efforts in **Launch API
+  Documentation Review Agents** already run as parallel background agents,
+  and **Tag and Push pgxntool** / **Stamp, Tag, and Push pgxntool-test** are
+  two independent repos that can likewise run at the same time rather than
+  one after the other. Anything that reads or depends on another step's
+  output (e.g. **Sanity-Check bin/version Output** needs the stamp from
+  **Update HISTORY.asc and Commit** to already exist) must still wait for
+  that dependency first.
+
 ---
 
-## Step 1: Run Pre-flight Checks
+## Run Pre-flight Checks
 
 Run the pre-flight script, passing VERSION if provided:
 
@@ -68,16 +91,17 @@ The script checks:
 - `PGXNTOOL_UPSTREAM` - remote name for pgxntool (e.g., "upstream")
 - `PGXNTOOL_TEST_UPSTREAM` - remote name for pgxntool-test (e.g., "upstream")
 
-## Step 2: Launch API Documentation Review Agents
+## Launch API Documentation Review Agents
 
 Immediately after pre-flight passes, launch the review agents below via the
 Agent tool, running in the background. This happens early so the review has
-time to finish while Steps 3-4 (version number, confirming HISTORY.asc) are
-worked through.
+time to finish while the version number is determined and HISTORY.asc is
+confirmed (below).
 
-**Gate: do not proceed past Step 6 (Update HISTORY.asc and Commit) — i.e. do
+**Gate: do not proceed past Update HISTORY.asc and Commit (below) — i.e. do
 not make any release-related change to git — until both sets of findings
-below have been retrieved and inspected.** See Step 5.
+below have been retrieved and inspected.** See Inspect API Documentation
+Review Findings.
 
 Launch two independent review efforts. Each may be one agent or a small set
 of agents if splitting the surface area (e.g. by file) makes sense; give
@@ -117,7 +141,7 @@ history)
 - This review ignores git history entirely — it only compares the README
   against the code as they exist right now.
 
-## Step 3: Determine Version Number
+## Determine Version Number
 
 If VERSION was not provided as an argument, ask the user:
 
@@ -131,7 +155,7 @@ Use AskUserQuestion:
 .claude/skills/release/scripts/release-preflight.sh VERSION
 ```
 
-## Step 4: Confirm HISTORY.asc
+## Confirm HISTORY.asc
 
 Read `../pgxntool/HISTORY.asc` and show the user what's in the STABLE section.
 
@@ -139,26 +163,27 @@ Read `../pgxntool/HISTORY.asc` and show the user what's in the STABLE section.
 - Warn: "No STABLE section found. No changes are documented for this release."
 - Ask user if they want to continue using AskUserQuestion.
 
-## Step 5: Inspect API Documentation Review Findings
+## Inspect API Documentation Review Findings
 
-Retrieve the results from both review efforts launched in Step 2 (wait for
-them if they haven't finished). This is a hard gate: **do not proceed to
-Step 6 until this step is complete** — Step 6 is the first release step
-that changes git state, and the whole point of launching the reviews early
-was to have their findings in hand before that happens.
+Retrieve the results from both review efforts launched in **Launch API
+Documentation Review Agents** (wait for them if they haven't finished). This
+is a hard gate: **do not proceed to Update HISTORY.asc and Commit until this
+step is complete** — that's the first release step that changes git state,
+and the whole point of launching the reviews early was to have their
+findings in hand before that happens.
 
 For each finding:
 
-- **Since-last-release findings (2A):** a behavior change without a STABLE
-  entry MUST be fixed before continuing. Either add the missing entry to the
-  STABLE section now (folded into Step 6's edit), or ask the user how they
-  want it documented — do not release with an undocumented behavior change.
-  API items added/removed by these commits but missing from README.asc must
-  also be fixed (edit README.asc) before continuing.
-- **Comprehensive findings (2B):** these may include pre-existing drift
-  unrelated to this release. Show the findings to the user and ask whether
-  to fix now (as part of this release), file as follow-up work, or dismiss
-  as a false positive — don't silently fix or silently ignore them.
+- **Since-last-release findings (review A):** a behavior change without a
+  STABLE entry MUST be fixed before continuing. Either add the missing entry
+  to the STABLE section now (folded into the HISTORY.asc edit below), or ask
+  the user how they want it documented — do not release with an undocumented
+  behavior change. API items added/removed by these commits but missing from
+  README.asc must also be fixed (edit README.asc) before continuing.
+- **Comprehensive findings (review B):** these may include pre-existing
+  drift unrelated to this release. Show the findings to the user and ask
+  whether to fix now (as part of this release), file as follow-up work, or
+  dismiss as a false positive — don't silently fix or silently ignore them.
 - **Ambiguous user-facing API surface calls (either agent):** show these to
   the user too. If a pattern recurs or the user gives a clear answer,
   consider updating the "User-facing API surface" definition in Terminology
@@ -166,33 +191,55 @@ For each finding:
 
 Summarize what was found and how each item was resolved before moving on.
 
-## Step 6: Update HISTORY.asc and Commit
+## Update HISTORY.asc and Commit
 
-1. Edit `../pgxntool/HISTORY.asc`: Replace the `STABLE` heading with the version number
+### Reorder the STABLE section entries by importance
 
-   Replace:
-   ```
-   STABLE
-   ------
-   ```
-   With:
-   ```
-   VERSION
-   -------
-   ```
-   (Adjust dashes to match version string length)
+By this point (the gate in **Inspect API Documentation Review Findings**)
+every entry this release needs is already in place. Before stamping, sort
+those entries -- most important first -- into:
 
-2. Commit:
-   ```bash
-   cd ../pgxntool && git commit -am "Stamp VERSION"
-   ```
+- Breaking changes -- anything that could break an existing consumer's
+  build, tests, or behavior
+- Non-breaking behavior changes -- existing behavior changed, but nothing
+  should break as a result (expect this category to be rare)
+- New features/additions -- new targets, variables, scripts, etc.
+- Bugfixes
 
-## Step 7: Sanity-Check pgxntool-version Output
+An entry that fits more than one category goes under the highest (earliest)
+one that applies. This is a one-time pass over *this release's* entries
+only -- it's not a standing order for HISTORY.asc as a whole, and older,
+already-released sections are never touched. If an entry's category is
+genuinely unclear, ask the user rather than guessing.
+
+### Stamp the version
+
+Edit `../pgxntool/HISTORY.asc`: replace the `STABLE` heading with the version number.
+
+Replace:
+```
+STABLE
+------
+```
+With:
+```
+VERSION
+-------
+```
+(Adjust dashes to match version string length)
+
+### Commit
+
+```bash
+cd ../pgxntool && git commit -am "Stamp VERSION"
+```
+
+## Sanity-Check bin/version Output
 
 CI depends on `bin/version` (see `../pgxntool/bin/version`, also wired up as
 `make pgxntool-version`) correctly reflecting whatever is actually on the
 first line of `HISTORY.asc` -- that's what lets a release PR be caught in CI
-if the stamp in Step 6 didn't take effect the way it should have. Run it
+if the stamp above didn't take effect the way it should have. Run it
 directly against the just-stamped, unmodified `../pgxntool` checkout:
 
 ```bash
@@ -200,11 +247,11 @@ directly against the just-stamped, unmodified `../pgxntool` checkout:
 ```
 
 **The output must be exactly VERSION.** If it's `STABLE`, an old version, or
-an error instead, the Step 6 edit didn't take effect correctly (or
-`bin/version` itself regressed). Stop and fix it -- do not tag or push a
-release that doesn't agree with this.
+an error instead, the stamp in **Update HISTORY.asc and Commit** didn't take
+effect correctly (or `bin/version` itself regressed). Stop and fix it -- do
+not tag or push a release that doesn't agree with this.
 
-## Step 8: Tag and Push pgxntool
+## Tag and Push pgxntool
 
 **CRITICAL: Push to the Postgres-Extensions remote, not to a fork.**
 
@@ -215,7 +262,7 @@ git push PGXNTOOL_UPSTREAM master
 git push PGXNTOOL_UPSTREAM VERSION
 ```
 
-## Step 9: Stamp, Tag, and Push pgxntool-test
+## Stamp, Tag, and Push pgxntool-test
 
 **CRITICAL: Push to the Postgres-Extensions remote, not to a fork.**
 
@@ -229,7 +276,10 @@ git push PGXNTOOL_TEST_UPSTREAM master
 git push PGXNTOOL_TEST_UPSTREAM VERSION
 ```
 
-## Step 10: Update `release` Tag
+This is independent of **Tag and Push pgxntool** (separate repo, separate
+remote) — see Process Notes above on running the two as parallel subagents.
+
+## Update the release Tag
 
 Both repos have a `release` tag on upstream that must always point to the latest
 release. This is a moving tag that requires force-push to update.
@@ -246,7 +296,7 @@ git tag -f release VERSION
 git push PGXNTOOL_TEST_UPSTREAM -f refs/tags/release
 ```
 
-## Step 11: Verify and Report
+## Verify and Report
 
 ```bash
 cd ../pgxntool && git checkout master
@@ -285,9 +335,11 @@ Verify releases:
 - Note which repo failed and what state the other repo is in
 
 **Rollback guidance if partial failure:**
-- If pgxntool push succeeded but pgxntool-test failed:
-  - Note that pgxntool is already released
-  - Provide commands to manually complete pgxntool-test release
+- If pgxntool push succeeded but pgxntool-test failed (or vice versa --
+  if these ran as parallel subagents, either can fail independently of
+  the other):
+  - Note which repo already succeeded
+  - Provide commands to manually complete the other repo's release
 - If failure during push:
   - Local state is complete, just need to retry push
 
