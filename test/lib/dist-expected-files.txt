@@ -66,6 +66,8 @@ test/sql/verify_install_marker.sql
 pgxntool/
 pgxntool/_.gitignore
 pgxntool/.gitignore
+pgxntool/bin/
+pgxntool/bin/version
 pgxntool/base.mk
 pgxntool/build_meta.sh
 pgxntool/JSON.sh
@@ -80,7 +82,6 @@ pgxntool/run-test-build.sh
 pgxntool/safesed
 pgxntool/setup.sh
 pgxntool/pgxntool-sync.sh
-pgxntool/pgxntool-version.sh
 pgxntool/update-setup-files.sh
 pgxntool/verify-results-pgtap.sh
 pgxntool/WHAT_IS_THIS

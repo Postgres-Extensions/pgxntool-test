@@ -2,7 +2,7 @@
 
 # Test: pgxntool-version
 #
-# Tests pgxntool-version.sh's HISTORY.asc parsing in isolation (a stamped
+# Tests bin/version's HISTORY.asc parsing in isolation (a stamped
 # version, an unreleased "STABLE" checkout, a missing file, an empty file,
 # malformed first lines), that `make pgxntool-version` is correctly wired to
 # it inside a real embedded pgxntool copy, and (CRITICAL -- see comment
@@ -18,7 +18,7 @@ setup_file() {
   load_test_env "pgxntool-version"
   ensure_foundation "$TEST_DIR"
 
-  export VERSION_SCRIPT="$TOPDIR/../pgxntool/pgxntool-version.sh"
+  export VERSION_SCRIPT="$TOPDIR/../pgxntool/bin/version"
   export SCRATCH_DIR="$TEST_DIR/pgxntool-version-tests"
 }
 
@@ -29,7 +29,7 @@ setup() {
   mkdir -p "$SCRATCH_DIR"
 }
 
-@test "pgxntool-version.sh prints a stamped version number" {
+@test "bin/version prints a stamped version number" {
   echo "2.1.0" > "$SCRATCH_DIR/HISTORY.asc"
 
   run "$VERSION_SCRIPT" "$SCRATCH_DIR/HISTORY.asc"
@@ -37,7 +37,7 @@ setup() {
   [ "$output" = "2.1.0" ]
 }
 
-@test "pgxntool-version.sh prints STABLE for an unreleased checkout" {
+@test "bin/version prints STABLE for an unreleased checkout" {
   printf 'STABLE\n------\n' > "$SCRATCH_DIR/HISTORY.asc"
 
   run "$VERSION_SCRIPT" "$SCRATCH_DIR/HISTORY.asc"
@@ -45,13 +45,13 @@ setup() {
   [ "$output" = "STABLE" ]
 }
 
-@test "pgxntool-version.sh errors on a missing HISTORY.asc" {
+@test "bin/version errors on a missing HISTORY.asc" {
   run "$VERSION_SCRIPT" "$SCRATCH_DIR/does-not-exist.asc"
   assert_failure
   assert_contains "$output" "not found"
 }
 
-@test "pgxntool-version.sh errors on an empty HISTORY.asc" {
+@test "bin/version errors on an empty HISTORY.asc" {
   : > "$SCRATCH_DIR/HISTORY.asc"
 
   run "$VERSION_SCRIPT" "$SCRATCH_DIR/HISTORY.asc"
@@ -59,7 +59,7 @@ setup() {
   assert_contains "$output" "empty"
 }
 
-@test "pgxntool-version.sh rejects a malformed first line" {
+@test "bin/version rejects a malformed first line" {
   for bad in "stable" "v2.1.0" "2.1.0-beta" "2.1" "not a version"; do
     echo "$bad" > "$SCRATCH_DIR/HISTORY.asc"
 
@@ -69,7 +69,7 @@ setup() {
   done
 }
 
-# CRITICAL: this test must run pgxntool-version.sh directly against the real,
+# CRITICAL: this test must run bin/version directly against the real,
 # unmodified $TOPDIR/../pgxntool checkout -- never a scratch file, an rsync'd
 # copy, or a cached foundation snapshot. A release PR stamps HISTORY.asc with
 # the real version and relies on CI running this exact check to catch a bad
@@ -79,7 +79,7 @@ setup() {
 # itself, and a copy-based or stale check could pass against old content and
 # let a wrong version ship. Do not weaken this to a scratch-file test or to a
 # non-empty check.
-@test "pgxntool-version.sh matches the current pgxntool/HISTORY.asc with no modifications" {
+@test "bin/version matches the current pgxntool/HISTORY.asc with no modifications" {
   local expected
   expected=$(head -n1 "$TOPDIR/../pgxntool/HISTORY.asc")
 

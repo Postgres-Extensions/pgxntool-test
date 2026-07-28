@@ -189,30 +189,20 @@ Summarize what was found and how each item was resolved before moving on.
 
 ## Step 7: Sanity-Check pgxntool-version Output
 
-CI depends on `pgxntool-version.sh` (see `../pgxntool/pgxntool-version.sh`,
-wired up as `make pgxntool-version`) correctly reflecting whatever is
-actually on the first line of `HISTORY.asc` -- that's what lets a release PR
-be caught in CI if the stamp in Step 6 didn't take effect the way it should
-have. Exercise the real `make pgxntool-version` target (not just the script)
-against the just-stamped, unmodified `../pgxntool` checkout:
+CI depends on `bin/version` (see `../pgxntool/bin/version`, also wired up as
+`make pgxntool-version`) correctly reflecting whatever is actually on the
+first line of `HISTORY.asc` -- that's what lets a release PR be caught in CI
+if the stamp in Step 6 didn't take effect the way it should have. Run it
+directly against the just-stamped, unmodified `../pgxntool` checkout:
 
 ```bash
-scratch=$(mktemp -d)
-ln -s "$(cd ../pgxntool && pwd)" "$scratch/pgxntool"
-echo 'include pgxntool/base.mk' > "$scratch/Makefile"
-(cd "$scratch" && make --no-print-directory pgxntool-version)
-rm -rf "$scratch"
+../pgxntool/bin/version
 ```
 
-Expect a harmless `ERROR: Usage: control.mk.sh ...` / `make: *** Deleting
-file 'control.mk'` line before the real output -- the scratch dir has no
-`.control` files, so `base.mk`'s `-include control.mk` fails to build it and
-make silently continues (same class of noise the `make list` trick above
-produces). **The last line printed must be exactly VERSION.** If it's
-`STABLE`, an old version, or an error instead, the Step 6 edit didn't take
-effect correctly (or `pgxntool-version.sh`/`base.mk` themselves regressed).
-Stop and fix it -- do not tag or push a release that `make pgxntool-version`
-doesn't agree with.
+**The output must be exactly VERSION.** If it's `STABLE`, an old version, or
+an error instead, the Step 6 edit didn't take effect correctly (or
+`bin/version` itself regressed). Stop and fix it -- do not tag or push a
+release that doesn't agree with this.
 
 ## Step 8: Tag and Push pgxntool
 
