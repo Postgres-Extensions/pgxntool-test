@@ -5,7 +5,7 @@ description: |
   HISTORY.asc updates, and pushing to the main Postgres-Extensions GitHub repos.
 
   Use when user says "release", "create release", "tag version", or "/release"
-allowed-tools: Bash(.claude/skills/release/scripts/release-preflight.sh:*), Bash(git tag:*), Bash(git commit:*), Bash(git push:*), Bash(git checkout:*), Bash(git status:*), Bash(git log:*), Bash(git remote:*), Bash(git rev-parse:*), Bash(git branch:*), Bash(git fetch:*), Bash(git diff:*), Bash(git merge:*), Bash(gh pr create:*), Bash(gh pr view:*), Bash(gh pr checks:*), Bash(.claude/skills/ci/scripts/monitor-ci.sh:*), Read, Edit
+allowed-tools: Bash(.claude/skills/release/scripts/release-preflight.sh:*), Bash(git tag:*), Bash(git commit:*), Bash(git push:*), Bash(git checkout:*), Bash(git status:*), Bash(git log:*), Bash(git remote:*), Bash(git rev-parse:*), Bash(git branch:*), Bash(git fetch:*), Bash(git diff:*), Bash(git merge:*), Bash(gh pr create:*), Bash(gh pr view:*), Bash(gh pr checks:*), Bash(gh pr close:*), Bash(.claude/skills/ci/scripts/monitor-ci.sh:*), Read, Edit
 ---
 
 # /release
@@ -20,9 +20,12 @@ Create a release for pgxntool and pgxntool-test.
 - **UPSTREAM_REMOTE**: The local git remote pointing to the main project repos at `https://github.com/Postgres-Extensions/`. Releases must be pushed here -- never to a fork. The remote name varies; it is identified by URL pattern in the pre-flight script.
 - **Release branch**: `release-VERSION` (e.g. `release-2.2.0`), created fresh
   off master in both repos once the version number is known (see
-  [Determine Version Number](#determine-version-number)). The stamp commit
-  lands here, not on master directly -- see
-  [Open Release Pull Requests](#open-release-pull-requests) for why.
+  [Determine Version Number](#determine-version-number)). The pgxntool
+  stamp commit lands here, not on master directly -- see
+  [Open Release Pull Requests](#open-release-pull-requests) for why. The
+  pgxntool-test branch of the same name carries only an empty commit and
+  its PR is **never merged** -- see the same section for why it still
+  needs to exist.
 - **User-facing API surface**: what the review agents launched in
   [Launch API Documentation Review Agents](#launch-api-documentation-review-agents)
   treat as "the documented API" of pgxntool. The canonical, evolving
@@ -79,9 +82,12 @@ Create a release for pgxntool and pgxntool-test.
   the stamp from
   [Update HISTORY.asc and Commit](#update-historyasc-and-commit) to already
   exist) must still wait for that dependency first.
-- **This skill never merges its own release PRs, and never applies the
+- **This skill never merges the pgxntool release PR, and never applies the
   `commit-with-no-tests` label.** Both are explicit human actions -- see
   [Wait for CI, Then Hand Off for Review](#wait-for-ci-then-hand-off-for-review).
+  The pgxntool-test PR is different again: it's never meant to be merged at
+  all, by anyone -- see
+  [Open Release Pull Requests](#open-release-pull-requests).
 - **The commits in this skill don't need a separate per-commit confirmation
   gate.** Invoking `/release` at all is the user's explicit instruction to
   run this whole documented flow, commits included -- and none of those
@@ -316,21 +322,31 @@ versions of this skill did) never runs CI at all, silently skipping every
 check this repo relies on. Instead, push the release branch and open a PR
 in each repo, same as any other change.
 
-**Push order doesn't matter here, and pushing pgxntool-test first is not a
-safeguard** -- an earlier draft of this step claimed it was, which was
-wrong. pgxntool's `check-test-pr` job checks doc-only status *first*, purely
-from this PR's own changed-file list -- no cross-repo lookup, no ordering
-or timing dependency at all -- and only falls through to searching for a
-paired pgxntool-test PR if that's false. A release-stamp PR only ever
-touches `HISTORY.asc`/`README.asc`/`README.html`, all covered by
-`DOC_EXTENSIONS`, so it should hit that bypass every time regardless of
-which repo's PR goes up first. (The pairing search existing at all is a
-general, latent race in `check-test-pr` for *any* paired PR, release or
-not -- ordinary PRs just tend to survive it better since a failed first CI
-run gets fixed by a follow-up push, whereas a release PR is pushed once and
-not iterated on nearly as much. Worth its own issue if it ever actually
-bites; not something this skill needs to work around, since it never
-depends on the pairing search succeeding.)
+**Why pgxntool-test needs a PR too, even though it has nothing to stamp.**
+pgxntool's release PR is doc-only (`HISTORY.asc`/`README.asc`/`README.html`
+only), and pgxntool's `check-test-pr` job skips the actual Postgres test
+matrix *unconditionally* for a doc-only PR -- no fallback to testing against
+master, regardless of whether a paired pgxntool-test PR exists. So without
+a companion PR, the real content of this release would get **zero** CI test
+coverage before it merges. What actually provides that coverage: an empty
+commit is *not* doc-only by pgxntool-test's own check (zero changed files
+trips a different guard), so its `test` job runs and resolves the paired
+pgxntool branch (`release-VERSION`, matched by name+account) -- exercising
+the real Postgres suite against the actual release content, just via
+pgxntool-test's CI instead of pgxntool's.
+
+**This means the pgxntool-test PR exists purely to trigger that test run --
+it must never be merged.** It changes nothing pgxntool-test actually wants
+on its master. Say so explicitly in the PR itself so nobody merges it by
+habit; close it (don't merge it) once its CI is green -- see
+[Wait for CI, Then Hand Off for Review](#wait-for-ci-then-hand-off-for-review).
+
+(Push order between the two repos doesn't matter for pgxntool's own
+`check-test-pr` gate -- it checks doc-only status purely from this PR's own
+changed-file list, with no cross-repo lookup, before it would ever look for
+a pairing. That pairing-search race is a real, general latent issue in
+`check-test-pr` for any paired PR, but this skill doesn't depend on it
+succeeding either way.)
 
 Push both branches directly to the Postgres-Extensions remotes, never a
 fork, and open both PRs -- these can run as parallel subagents (see Process
@@ -342,8 +358,12 @@ git commit --allow-empty -m "Stamp VERSION"
 git push PGXNTOOL_TEST_UPSTREAM release-VERSION
 gh pr create --repo Postgres-Extensions/pgxntool-test \
   --base master --head release-VERSION \
-  --title "Release VERSION" \
-  --body "Companion stamp for pgxntool release-VERSION."
+  --title "DO NOT MERGE: Release VERSION (CI trigger only)" \
+  --body "This PR exists only to trigger a real CI test run of the paired \
+pgxntool release-VERSION branch -- pgxntool's own release PR is doc-only \
+and skips the Postgres test matrix entirely. It changes nothing in \
+pgxntool-test (empty commit) and must NOT be merged. Close it once its CI \
+is green."
 ```
 
 ```bash
@@ -352,7 +372,7 @@ git push PGXNTOOL_UPSTREAM release-VERSION
 gh pr create --repo Postgres-Extensions/pgxntool \
   --base master --head release-VERSION \
   --title "Release VERSION" \
-  --body "Stamps HISTORY.asc for VERSION. Companion: pgxntool-test release-VERSION."
+  --body "Stamps HISTORY.asc for VERSION. Companion (do-not-merge, CI trigger only): pgxntool-test release-VERSION."
 ```
 
 Per this project's CI-monitoring rule, immediately start a background
@@ -371,12 +391,20 @@ bash .claude/skills/ci/scripts/monitor-ci.sh pgxntool release-VERSION "" <pgxnto
 ## Wait for CI, Then Hand Off for Review
 
 Wait for the results from the two `monitor-ci.sh` background runs started in
-[Open Release Pull Requests](#open-release-pull-requests). This skill does
-not merge either PR and does not apply any label -- both are explicit human
-actions. Report to the user:
+[Open Release Pull Requests](#open-release-pull-requests). The pgxntool-test
+run is where the *actual* Postgres test coverage of this release lives (see
+[Open Release Pull Requests](#open-release-pull-requests)) -- pgxntool's own
+run will just show its test job skipped as doc-only, which is expected, not
+a problem. This skill does not merge the pgxntool PR, does not merge or
+close the pgxntool-test PR, and does not apply any label -- all explicit
+human actions. Report to the user:
 
 - Both PR URLs
 - CI status for each
+
+**If pgxntool-test's CI fails:** this is a real failure of the actual
+release content (see above) -- treat it the same as any other CI failure
+needing investigation, not a formality.
 
 **If pgxntool's `check-test-pr` job fails** (shouldn't happen for a
 doc-only release diff -- see
@@ -387,14 +415,21 @@ to the pgxntool PR themselves. **This skill must never apply that label --
 it's maintainer-gated.**
 
 **Then stop and wait.** Do not proceed to
-[Tag Both Repos](#tag-both-repos) until the user confirms both PRs are
-merged.
+[Tag Both Repos](#tag-both-repos) until the user confirms: pgxntool's
+release PR is merged, and pgxntool-test's CI-trigger PR's CI passed (that
+one is never merged -- see
+[Open Release Pull Requests](#open-release-pull-requests)).
 
 ## Tag Both Repos
 
-Only after the user has confirmed both release PRs are merged. The tag must
-point at whatever actually landed on master -- not the pre-merge branch tip,
-which may differ if the PR was squashed or rebased on merge.
+Only after the user has confirmed pgxntool's release PR is merged and
+pgxntool-test's CI-trigger PR passed CI (see
+[Wait for CI, Then Hand Off for Review](#wait-for-ci-then-hand-off-for-review)).
+pgxntool's tag must point at whatever actually landed on master -- not the
+pre-merge branch tip, which may differ if the PR was squashed or rebased on
+merge. pgxntool-test's master never changed (its PR is never merged -- see
+[Open Release Pull Requests](#open-release-pull-requests)), so its tag just
+goes on current master directly.
 
 This step rebases local state onto a freshly fetched master in both repos,
 so per this repo's CLAUDE.md, run the cross-reference audit first:
@@ -427,6 +462,9 @@ git push PGXNTOOL_TEST_UPSTREAM VERSION
 The `head -n1 HISTORY.asc` check exists because a squash/rebase merge can
 alter file content in ways a pre-merge check never saw -- confirm the merged
 result, not just the pre-merge branch, agrees with VERSION before tagging.
+pgxntool-test's fetch+merge here isn't rebasing onto new content (nothing
+merged there) -- it's just confirming local master hasn't drifted from
+upstream before tagging it.
 
 ## Update the release Tag
 
@@ -447,13 +485,23 @@ git push PGXNTOOL_TEST_UPSTREAM -f refs/tags/release
 
 ## Verify and Report
 
-Both repos are already on master with the release branch merged in (see
-[Tag Both Repos](#tag-both-repos)); delete the now-merged local release
-branches:
+pgxntool is already on master with the release branch merged in (see
+[Tag Both Repos](#tag-both-repos)); delete its now-merged local release
+branch. pgxntool-test's release branch was never merged (see
+[Open Release Pull Requests](#open-release-pull-requests)) -- close its
+CI-trigger PR and delete the branch on both ends:
 
 ```bash
 cd ../pgxntool && git branch -d release-VERSION
-cd ../pgxntool-test && git branch -d release-VERSION
+cd ../pgxntool-test
+gh pr close --repo Postgres-Extensions/pgxntool-test --delete-branch release-VERSION
+```
+
+`--delete-branch` removes the remote `release-VERSION` ref; delete the
+local one too if it's still checked out elsewhere:
+
+```bash
+cd ../pgxntool-test && git branch -D release-VERSION
 ```
 
 Output:
@@ -467,8 +515,8 @@ pgxntool:
 - release tag updated to VERSION
 
 pgxntool-test:
-- Stamp commit created
-- Release PR merged, tag VERSION created and pushed to PGXNTOOL_TEST_UPSTREAM
+- CI-trigger PR closed without merging (never landed anything)
+- Tag VERSION created directly on master and pushed to PGXNTOOL_TEST_UPSTREAM
 - release tag updated to VERSION
 
 Verify releases:
@@ -494,9 +542,9 @@ master. Immediately re-run `monitor-ci.sh` for that push, same as in
 [Open Release Pull Requests](#open-release-pull-requests).
 
 **Rollback guidance if partial failure:**
-- If one repo's PR is merged but the other isn't yet: this is expected with
-  a manual-merge workflow, not a failure -- wait for the user to merge the
-  second one before running
+- If pgxntool's PR is merged but pgxntool-test's CI-trigger PR hasn't gone
+  green yet (or vice versa): expected with a manual hand-off, not a failure
+  -- wait for both conditions before running
   [Tag Both Repos](#tag-both-repos). Don't tag one repo without the other.
 - If pushing the release branch itself fails: local state is complete, just
   need to retry the push.
