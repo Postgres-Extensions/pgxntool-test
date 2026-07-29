@@ -5,7 +5,7 @@ description: |
   HISTORY.asc updates, and pushing to the main Postgres-Extensions GitHub repos.
 
   Use when user says "release", "create release", "tag version", or "/release"
-allowed-tools: Bash(.claude/skills/release/scripts/release-preflight.sh:*), Bash(git tag:*), Bash(git commit:*), Bash(git push:*), Bash(git checkout:*), Bash(git status:*), Bash(git log:*), Bash(git remote:*), Bash(git rev-parse:*), Bash(git branch:*), Bash(git fetch:*), Bash(git diff:*), Read, Edit
+allowed-tools: Bash(.claude/skills/release/scripts/release-preflight.sh:*), Bash(git tag:*), Bash(git commit:*), Bash(git push:*), Bash(git checkout:*), Bash(git status:*), Bash(git log:*), Bash(git remote:*), Bash(git rev-parse:*), Bash(git branch:*), Bash(git fetch:*), Bash(git diff:*), Bash(git merge:*), Bash(gh pr create:*), Bash(gh pr view:*), Bash(gh pr checks:*), Bash(gh pr close:*), Bash(gh run list:*), Bash(gh run view:*), Bash(grep:*), Bash(.claude/skills/ci/scripts/monitor-ci.sh:*), Read, Edit
 ---
 
 # /release
@@ -18,15 +18,25 @@ Create a release for pgxntool and pgxntool-test.
 
 - **STABLE section**: The heading in `HISTORY.asc` where unreleased changes are documented. During a release, this heading is replaced with the version number. This has nothing to do with git branches.
 - **UPSTREAM_REMOTE**: The local git remote pointing to the main project repos at `https://github.com/Postgres-Extensions/`. Releases must be pushed here -- never to a fork. The remote name varies; it is identified by URL pattern in the pre-flight script.
-- **User-facing API surface**: what the Step 2 review agents treat as "the
-  documented API" of pgxntool. The canonical, evolving definition lives in
-  this repo's own `CLAUDE.md`, under "User-Facing API Surface of pgxntool"
-  (not `../pgxntool/CLAUDE.md` — that file is user-facing docs for
-  extension developers, not dev/audit tooling docs). Read that section
-  fresh before launching the Step 2 agents and give them its current text
-  verbatim as their scope, since it's expected to change over time. When a
-  reviewer hits a case that doesn't clearly fit, flag it for the user
-  rather than guessing, and consider updating that section afterward.
+- **Release branch**: `release-VERSION` (e.g. `release-2.2.0`), created fresh
+  off master in both repos once the version number is known (see
+  [Determine Version Number](#determine-version-number)). The pgxntool
+  stamp commit lands here, not on master directly -- see
+  [Open Release Pull Requests](#open-release-pull-requests) for why. The
+  pgxntool-test branch of the same name carries only an empty commit and
+  its PR is **never merged** -- see the same section for why it still
+  needs to exist.
+- **User-facing API surface**: what the review agents launched in
+  [Launch API Documentation Review Agents](#launch-api-documentation-review-agents)
+  treat as "the documented API" of pgxntool. The canonical, evolving
+  definition lives in this repo's own `CLAUDE.md`, under "User-Facing API
+  Surface of pgxntool" (not `../pgxntool/CLAUDE.md` — that file is
+  user-facing docs for extension developers, not dev/audit tooling docs).
+  Read that section fresh before launching those agents and give them its
+  current text verbatim as their scope, since it's expected to change over
+  time. When a reviewer hits a case that doesn't clearly fit, flag it for
+  the user rather than guessing, and consider updating that section
+  afterward.
 - **Discovering make targets**: the definition's target list should be
   found with `make list` (a target pgxntool itself provides — see
   `base.mk`), not by grepping for target definitions, since pattern rules
@@ -42,9 +52,52 @@ Create a release for pgxntool and pgxntool-test.
     `test/install/*.sql` exist) won't show up this way. Read `base.mk`
     directly for these rather than relying on `make list` alone.
 
+## Process Notes
+
+- **Steps below are headings, referenced by anchor link.** Earlier versions
+  of this skill numbered each step and cross-referenced them as "Step 6",
+  "Step 2", etc. That broke every time a step was inserted, removed, or
+  reordered -- every reference elsewhere in the document had to be found
+  and renumbered by hand, and it was easy to miss one. A later revision
+  switched to bolding the step's heading text instead, which fixed the
+  renumbering problem but was still just prose -- nothing stopped it from
+  drifting out of sync with the actual heading, and it gave a human reading
+  this on GitHub nothing to click. Steps are referenced by a real markdown
+  link to the heading's anchor instead (`[Heading Text](#heading-text)`),
+  which is both unambiguous (a stale link can be checked by clicking it)
+  and clickable when this file is viewed on GitHub.
+- **Parallelize independent work.** The steps below are written in the order
+  they're normally reasoned about, but that doesn't mean everything has to
+  run one at a time. Where two pieces of work don't depend on each other's
+  output, hand them to separate subagents and let them run concurrently
+  instead of sequentially -- e.g. the two review efforts in
+  [Launch API Documentation Review Agents](#launch-api-documentation-review-agents)
+  already run as parallel background agents, and the pgxntool /
+  pgxntool-test halves of
+  [Open Release Pull Requests](#open-release-pull-requests) and
+  [Tag Both Repos](#tag-both-repos) are two independent repos that can
+  likewise run at the same time rather than one after the other. Anything
+  that reads or depends on another step's output (e.g.
+  [Sanity-Check bin/version Output](#sanity-check-binversion-output) needs
+  the stamp from
+  [Update HISTORY.asc and Commit](#update-historyasc-and-commit) to already
+  exist) must still wait for that dependency first.
+- **This skill never merges the pgxntool release PR, and never applies the
+  `commit-with-no-tests` label.** Both are explicit human actions -- see
+  [Wait for CI, Then Hand Off for Review](#wait-for-ci-then-hand-off-for-review).
+  The pgxntool-test PR is different again: it's never meant to be merged at
+  all, by anyone -- see
+  [Open Release Pull Requests](#open-release-pull-requests).
+- **The commits in this skill don't need a separate per-commit confirmation
+  gate.** Invoking `/release` at all is the user's explicit instruction to
+  run this whole documented flow, commits included -- and none of those
+  commits touch master directly; they land on `release-VERSION` and only
+  reach master through a human-reviewed, human-merged PR (see
+  [Open Release Pull Requests](#open-release-pull-requests)).
+
 ---
 
-## Step 1: Run Pre-flight Checks
+## Run Pre-flight Checks
 
 Run the pre-flight script, passing VERSION if provided:
 
@@ -68,16 +121,67 @@ The script checks:
 - `PGXNTOOL_UPSTREAM` - remote name for pgxntool (e.g., "upstream")
 - `PGXNTOOL_TEST_UPSTREAM` - remote name for pgxntool-test (e.g., "upstream")
 
-## Step 2: Launch API Documentation Review Agents
+## Verify CI Runs test-all
+
+This whole release process leans on pgxntool-test's own CI (triggered by the
+companion PR in
+[Open Release Pull Requests](#open-release-pull-requests)) to give the
+release content real Postgres test coverage -- see that section for why.
+That guarantee is only as good as `run-tests.yml` actually running the full
+suite, and this has silently regressed before (it was found running only
+`make test`, silently excluding everything in `test/extra/`). Check both the
+workflow definition and a recent real run before trusting it -- don't rely
+on the YAML alone.
+
+**Check the workflow definition:**
+
+```bash
+grep -n "run: make" ../pgxntool-test/.github/workflows/run-tests.yml
+```
+
+The `Run tests` step must read `make test-all`. If it reads `make test` or
+`make test-extra`, that's the same bug recurring -- stop and fix it (or
+confirm someone already is) before continuing.
+
+**Check a recent actual run agrees with the code.** `make test` and `make
+test-extra` both print a `Tip: Use 'make test-extra' ... or 'make test-all'
+for everything` banner before and after the suite; `make test-all` never
+prints it. Pull the most recent successful CI run's logs and confirm that
+banner is absent:
+
+```bash
+run_id=$(gh run list --repo Postgres-Extensions/pgxntool-test --workflow CI \
+  --status success --limit 1 --json databaseId --jq '.[0].databaseId')
+gh run view "$run_id" --repo Postgres-Extensions/pgxntool-test --log \
+  | grep -i "Use 'make test-extra'"
+```
+
+Any match means the actual run did NOT use `test-all`, regardless of what
+the checked-in YAML says -- the workflow the runner executed and the
+workflow on record can differ (e.g. `run-tests.yml` is a reusable workflow
+pulled from a specific ref -- see its own `CROSS-REPO REUSABLE WORKFLOW`
+comment in `../pgxntool/.github/workflows/ci.yml`). No match is a good sign
+but confirm it's actually checking the right step's output, not silently
+matching nothing due to a `gh` error.
+
+**If either check fails:** STOP. This is a testing-infrastructure gap, not
+something to route around release-by-release. Fix `run-tests.yml` (or hand
+this off, e.g. to a dedicated follow-up PR/agent) and only continue the
+release once both checks pass.
+
+## Launch API Documentation Review Agents
 
 Immediately after pre-flight passes, launch the review agents below via the
 Agent tool, running in the background. This happens early so the review has
-time to finish while Steps 3-4 (version number, confirming HISTORY.asc) are
-worked through.
+time to finish while
+[Determine Version Number](#determine-version-number) and
+[Confirm HISTORY.asc](#confirm-historyasc) (below) are worked through.
 
-**Gate: do not proceed past Step 6 (Update HISTORY.asc and Commit) — i.e. do
-not make any release-related change to git — until both sets of findings
-below have been retrieved and inspected.** See Step 5.
+**Gate: do not proceed past
+[Update HISTORY.asc and Commit](#update-historyasc-and-commit) — i.e. do not
+make any release-related change to git — until both sets of findings below
+have been retrieved and inspected.** See
+[Inspect API Documentation Review Findings](#inspect-api-documentation-review-findings).
 
 Launch two independent review efforts. Each may be one agent or a small set
 of agents if splitting the surface area (e.g. by file) makes sense; give
@@ -117,7 +221,7 @@ history)
 - This review ignores git history entirely — it only compares the README
   against the code as they exist right now.
 
-## Step 3: Determine Version Number
+## Determine Version Number
 
 If VERSION was not provided as an argument, ask the user:
 
@@ -127,38 +231,54 @@ Use AskUserQuestion:
 - Provide options based on current version in pgxntool's HISTORY.asc
 
 **Then re-run pre-flight** with the chosen version to validate it:
+
 ```bash
 .claude/skills/release/scripts/release-preflight.sh VERSION
 ```
 
-## Step 4: Confirm HISTORY.asc
+## Confirm HISTORY.asc
 
 Read `../pgxntool/HISTORY.asc` and show the user what's in the STABLE section.
 
-**If no STABLE section exists:**
-- Warn: "No STABLE section found. No changes are documented for this release."
-- Ask user if they want to continue using AskUserQuestion.
+**If no STABLE section exists:** later,
+[Stamp the version](#stamp-the-version) can only replace an existing
+`STABLE` heading -- there's nothing to continue *to* without one, and
+[Sanity-Check bin/version Output](#sanity-check-binversion-output) will
+fail if it's missing. Ask the user (via AskUserQuestion) to pick one:
+- Add a `STABLE` section to `HISTORY.asc` now (even if it ends up
+  documenting nothing but a header for this release), then continue.
+- Stop the release here.
 
-## Step 5: Inspect API Documentation Review Findings
+Do not proceed to
+[Inspect API Documentation Review Findings](#inspect-api-documentation-review-findings)
+without a `STABLE` section actually in hand -- "continue" only means
+something once one exists.
 
-Retrieve the results from both review efforts launched in Step 2 (wait for
-them if they haven't finished). This is a hard gate: **do not proceed to
-Step 6 until this step is complete** — Step 6 is the first release step
-that changes git state, and the whole point of launching the reviews early
-was to have their findings in hand before that happens.
+## Inspect API Documentation Review Findings
+
+Retrieve the results from both review efforts launched in
+[Launch API Documentation Review Agents](#launch-api-documentation-review-agents)
+(wait for them if they haven't finished). This is a hard gate: **do not
+proceed to
+[Update HISTORY.asc and Commit](#update-historyasc-and-commit) until this
+step is complete** — that's the first release step that changes git state,
+and the whole point of launching the reviews early was to have their
+findings in hand before that happens.
 
 For each finding:
 
-- **Since-last-release findings (2A):** a behavior change without a STABLE
-  entry MUST be fixed before continuing. Either add the missing entry to the
-  STABLE section now (folded into Step 6's edit), or ask the user how they
-  want it documented — do not release with an undocumented behavior change.
-  API items added/removed by these commits but missing from README.asc must
-  also be fixed (edit README.asc) before continuing.
-- **Comprehensive findings (2B):** these may include pre-existing drift
-  unrelated to this release. Show the findings to the user and ask whether
-  to fix now (as part of this release), file as follow-up work, or dismiss
-  as a false positive — don't silently fix or silently ignore them.
+- **Since-last-release findings (review A):** a behavior change without a
+  STABLE entry means something already went wrong upstream of this release
+  (it should have been documented when it merged) -- **always ask the user**
+  how they want it documented; never silently write the entry yourself. Fold
+  their answer into the STABLE section as part of the HISTORY.asc edit below.
+  Do not release with an undocumented behavior change. The same goes for API
+  items added/removed by these commits but missing from README.asc: ask, then
+  edit README.asc, before continuing.
+- **Comprehensive findings (review B):** these may include pre-existing
+  drift unrelated to this release. Show the findings to the user and ask
+  whether to fix now (as part of this release), file as follow-up work, or
+  dismiss as a false positive — don't silently fix or silently ignore them.
 - **Ambiguous user-facing API surface calls (either agent):** show these to
   the user too. If a pattern recurs or the user gives a clear answer,
   consider updating the "User-facing API surface" definition in Terminology
@@ -166,53 +286,239 @@ For each finding:
 
 Summarize what was found and how each item was resolved before moving on.
 
-## Step 6: Update HISTORY.asc and Commit
+## Update HISTORY.asc and Commit
 
-1. Edit `../pgxntool/HISTORY.asc`: Replace the `STABLE` heading with the version number
+### Create the release branch
 
-   Replace:
-   ```
-   STABLE
-   ------
-   ```
-   With:
-   ```
-   VERSION
-   -------
-   ```
-   (Adjust dashes to match version string length)
-
-2. Commit:
-   ```bash
-   cd ../pgxntool && git commit -am "Stamp VERSION"
-   ```
-
-## Step 7: Tag and Push pgxntool
-
-**CRITICAL: Push to the Postgres-Extensions remote, not to a fork.**
+Both repos get a same-named branch (see **Release branch** in Terminology;
+the empty pgxntool-test PR is strictly to trigger a CI run -- see
+[Open Release Pull Requests](#open-release-pull-requests)).
 
 ```bash
-cd ../pgxntool
-git tag VERSION
-git push PGXNTOOL_UPSTREAM master
-git push PGXNTOOL_UPSTREAM VERSION
+cd ../pgxntool && git checkout -b release-VERSION
+cd ../pgxntool-test && git checkout -b release-VERSION
 ```
 
-## Step 8: Stamp, Tag, and Push pgxntool-test
+### Reorder the STABLE section entries by importance
 
-**CRITICAL: Push to the Postgres-Extensions remote, not to a fork.**
+By this point (the gate in
+[Inspect API Documentation Review Findings](#inspect-api-documentation-review-findings))
+every entry this release needs is already in place. Before stamping, sort
+those entries -- most important first -- into:
 
-Create a stamp commit to match pgxntool's, then tag and push:
+1. Breaking changes -- anything that could break an existing consumer's
+   build, tests, or behavior
+2. Non-breaking behavior changes -- existing behavior changed, but nothing
+   should break as a result (expect this category to be rare)
+3. New features/additions -- new targets, variables, scripts, etc.
+4. Bugfixes
+
+An entry that fits more than one category goes under the highest (earliest)
+one that applies. This is a one-time pass over *this release's* entries
+only -- it's not a standing order for HISTORY.asc as a whole, and older,
+already-released sections are never touched. If an entry's category is
+genuinely unclear, ask the user rather than guessing.
+
+### Stamp the version
+
+Edit `../pgxntool/HISTORY.asc`: replace the `STABLE` heading with the version number.
+
+Replace:
+
+```text
+STABLE
+------
+```
+
+With:
+
+```text
+VERSION
+-------
+```
+
+(Adjust dashes to match version string length)
+
+### Commit
+
+```bash
+cd ../pgxntool && git commit -am "Stamp VERSION"
+```
+
+## Sanity-Check bin/version Output
+
+CI depends on `bin/version` (see `../pgxntool/bin/version`, also wired up as
+`make pgxntool-version`) correctly reflecting whatever is actually on the
+first line of `HISTORY.asc` -- that's what lets a release PR be caught in CI
+if the stamp above didn't take effect the way it should have. Run it
+directly against the just-stamped, unmodified `../pgxntool` checkout:
+
+```bash
+../pgxntool/bin/version
+```
+
+**The output must be exactly VERSION.** If it's `STABLE`, an old version, or
+an error instead, the stamp in
+[Update HISTORY.asc and Commit](#update-historyasc-and-commit) didn't take
+effect correctly (or `bin/version` itself regressed). Stop and fix it -- do
+not open a release PR that doesn't agree with this.
+
+## Open Release Pull Requests
+
+**Never commit or push straight to master.** pgxntool's CI only triggers on
+`pull_request` -- a direct push to master's `master` branch (which earlier
+versions of this skill did) never runs CI at all, silently skipping every
+check this repo relies on. Instead, push the release branch and open a PR
+in each repo, same as any other change.
+
+**Why pgxntool-test needs a PR too, even though it has nothing to stamp.**
+pgxntool's release PR is doc-only (`HISTORY.asc`/`README.asc`/`README.html`
+only), and pgxntool's `check-test-pr` job skips the actual Postgres test
+matrix *unconditionally* for a doc-only PR -- no fallback to testing against
+master, regardless of whether a paired pgxntool-test PR exists. So without
+a companion PR, the real content of this release would get **zero** CI test
+coverage before it merges. What actually provides that coverage: an empty
+commit is *not* doc-only by pgxntool-test's own check (zero changed files
+trips a different guard), so its `test` job runs and resolves the paired
+pgxntool branch (`release-VERSION`, matched by name+account) -- exercising
+the real Postgres suite against the actual release content, just via
+pgxntool-test's CI instead of pgxntool's.
+
+**This means the pgxntool-test PR exists purely to trigger that test run --
+it must never be merged.** It changes nothing pgxntool-test actually wants
+on its master. Say so explicitly in the PR itself so nobody merges it by
+habit. Closing it is not an automatic action just because its CI went
+green -- point the user at the CI run and wait for their explicit
+go-ahead, same as merging pgxntool's PR is a human action, not this
+skill's -- see
+[Wait for CI, Then Hand Off for Review](#wait-for-ci-then-hand-off-for-review).
+
+(Push order between the two repos doesn't matter for pgxntool's own
+`check-test-pr` gate -- it checks doc-only status purely from this PR's own
+changed-file list, with no cross-repo lookup, before it would ever look for
+a pairing. That pairing-search race is a real, general latent issue in
+`check-test-pr` for any paired PR, but this skill doesn't depend on it
+succeeding either way.)
+
+Push both branches directly to the Postgres-Extensions remotes, never a
+fork, and open both PRs -- these can run as parallel subagents (see Process
+Notes):
 
 ```bash
 cd ../pgxntool-test
 git commit --allow-empty -m "Stamp VERSION"
+git push PGXNTOOL_TEST_UPSTREAM release-VERSION
+gh pr create --repo Postgres-Extensions/pgxntool-test \
+  --base master --head release-VERSION \
+  --title "DO NOT MERGE: Release VERSION (CI trigger only)" \
+  --body "This PR exists only to trigger a real CI test run of the paired \
+pgxntool release-VERSION branch -- pgxntool's own release PR is doc-only \
+and skips the Postgres test matrix entirely. It changes nothing in \
+pgxntool-test (empty commit) and must NOT be merged. Close it once its CI \
+is green."
+```
+
+```bash
+cd ../pgxntool
+git push PGXNTOOL_UPSTREAM release-VERSION
+gh pr create --repo Postgres-Extensions/pgxntool \
+  --base master --head release-VERSION \
+  --title "Release VERSION" \
+  --body "Stamps HISTORY.asc for VERSION. Companion (do-not-merge, CI trigger only): pgxntool-test release-VERSION."
+```
+
+Per this project's CI-monitoring rule, immediately start a background
+monitor for each push (exact SHA, not `--branch`, to avoid a race with any
+other concurrent push on this branch name -- one monitor per repo, not run
+sequentially):
+
+```bash
+bash .claude/skills/ci/scripts/monitor-ci.sh pgxntool-test release-VERSION <pgxntool-test-sha> ""
+```
+
+```bash
+bash .claude/skills/ci/scripts/monitor-ci.sh pgxntool release-VERSION "" <pgxntool-sha>
+```
+
+## Wait for CI, Then Hand Off for Review
+
+Wait for the results from the two `monitor-ci.sh` background runs started in
+[Open Release Pull Requests](#open-release-pull-requests). The pgxntool-test
+run is where the *actual* Postgres test coverage of this release lives (see
+[Open Release Pull Requests](#open-release-pull-requests)) -- pgxntool's own
+run will just show its test job skipped as doc-only, which is expected, not
+a problem. This skill does not merge the pgxntool PR, does not merge or
+close the pgxntool-test PR, and does not apply any label -- all explicit
+human actions. Report to the user:
+
+- Both PR URLs
+- CI status for each
+
+**If pgxntool-test's CI fails:** this is a real failure of the actual
+release content (see above) -- treat it the same as any other CI failure
+needing investigation, not a formality.
+
+**If pgxntool's `check-test-pr` job fails** (shouldn't happen for a
+doc-only release diff -- see
+[Open Release Pull Requests](#open-release-pull-requests) -- but isn't
+impossible, e.g. if this release ends up needing a non-doc file change):
+tell the user a maintainer needs to apply the `commit-with-no-tests` label
+to the pgxntool PR themselves. **This skill must never apply that label --
+it's maintainer-gated.**
+
+**Then stop and wait.** Do not proceed to
+[Tag Both Repos](#tag-both-repos) until the user confirms: pgxntool's
+release PR is merged, and pgxntool-test's CI-trigger PR's CI passed (that
+one is never merged -- see
+[Open Release Pull Requests](#open-release-pull-requests)).
+
+## Tag Both Repos
+
+Only after the user has confirmed pgxntool's release PR is merged and
+pgxntool-test's CI-trigger PR passed CI (see
+[Wait for CI, Then Hand Off for Review](#wait-for-ci-then-hand-off-for-review)).
+pgxntool's tag must point at whatever actually landed on master -- not the
+pre-merge branch tip, which may differ if the PR was squashed or rebased on
+merge. pgxntool-test's master never changed (its PR is never merged -- see
+[Open Release Pull Requests](#open-release-pull-requests)), so its tag just
+goes on current master directly.
+
+This step rebases local state onto a freshly fetched master in both repos,
+so per this repo's CLAUDE.md, run the cross-reference audit first:
+
+```bash
+bash .claude/skills/crossref-audit/scripts/audit.sh ../pgxntool .
+```
+
+Follow its output if it flags anything; only continue once it's clean.
+
+```bash
+cd ../pgxntool
+git fetch PGXNTOOL_UPSTREAM master
+git checkout master
+git merge --ff-only PGXNTOOL_UPSTREAM/master
+head -n1 HISTORY.asc   # must read exactly VERSION -- stop if it doesn't
 git tag VERSION
-git push PGXNTOOL_TEST_UPSTREAM master
+git push PGXNTOOL_UPSTREAM VERSION
+```
+
+```bash
+cd ../pgxntool-test
+git fetch PGXNTOOL_TEST_UPSTREAM master
+git checkout master
+git merge --ff-only PGXNTOOL_TEST_UPSTREAM/master
+git tag VERSION
 git push PGXNTOOL_TEST_UPSTREAM VERSION
 ```
 
-## Step 9: Update `release` Tag
+The `head -n1 HISTORY.asc` check exists because a squash/rebase merge can
+alter file content in ways a pre-merge check never saw -- confirm the merged
+result, not just the pre-merge branch, agrees with VERSION before tagging.
+pgxntool-test's fetch+merge here isn't rebasing onto new content (nothing
+merged there) -- it's just confirming local master hasn't drifted from
+upstream before tagging it.
+
+## Update the release Tag
 
 Both repos have a `release` tag on upstream that must always point to the latest
 release. This is a moving tag that requires force-push to update.
@@ -229,26 +535,47 @@ git tag -f release VERSION
 git push PGXNTOOL_TEST_UPSTREAM -f refs/tags/release
 ```
 
-## Step 10: Verify and Report
+## Verify and Report
+
+pgxntool is already on master with the release branch merged in (see
+[Tag Both Repos](#tag-both-repos)); delete its now-merged local release
+branch.
+
+pgxntool-test's release branch was never merged (see
+[Open Release Pull Requests](#open-release-pull-requests)). Before closing
+its CI-trigger PR, point the user at its CI run and ask them to confirm
+it's OK to close as part of finishing the release -- this is a distinct
+confirmation from the CI-passed check in
+[Wait for CI, Then Hand Off for Review](#wait-for-ci-then-hand-off-for-review),
+not implied by it. Once confirmed, close it and delete the branch on both
+ends:
 
 ```bash
-cd ../pgxntool && git checkout master
-cd ../pgxntool-test && git checkout master
+cd ../pgxntool && git branch -d release-VERSION
+cd ../pgxntool-test
+gh pr close --repo Postgres-Extensions/pgxntool-test --delete-branch release-VERSION
+```
+
+`--delete-branch` removes the remote `release-VERSION` ref; delete the
+local one too if it's still checked out elsewhere:
+
+```bash
+cd ../pgxntool-test && git branch -D release-VERSION
 ```
 
 Output:
 
-```
+```text
 Release VERSION complete!
 
 pgxntool:
 - HISTORY.asc stamped with VERSION
-- Tag VERSION created and pushed to PGXNTOOL_UPSTREAM
+- Release PR merged, tag VERSION created and pushed to PGXNTOOL_UPSTREAM
 - release tag updated to VERSION
 
 pgxntool-test:
-- Stamp commit created
-- Tag VERSION created and pushed to PGXNTOOL_TEST_UPSTREAM
+- CI-trigger PR closed without merging (never landed anything)
+- Tag VERSION created directly on master and pushed to PGXNTOOL_TEST_UPSTREAM
 - release tag updated to VERSION
 
 Verify releases:
@@ -267,12 +594,19 @@ Verify releases:
 - Provide recovery instructions
 - Note which repo failed and what state the other repo is in
 
+**If a release PR's CI fails:** fix the problem on the `release-VERSION`
+branch and push again (`git commit --amend` or a follow-up commit) -- do not
+close it and open a new PR, and do not fall back to pushing straight to
+master. Immediately re-run `monitor-ci.sh` for that push, same as in
+[Open Release Pull Requests](#open-release-pull-requests).
+
 **Rollback guidance if partial failure:**
-- If pgxntool push succeeded but pgxntool-test failed:
-  - Note that pgxntool is already released
-  - Provide commands to manually complete pgxntool-test release
-- If failure during push:
-  - Local state is complete, just need to retry push
+- If pgxntool's PR is merged but pgxntool-test's CI-trigger PR hasn't gone
+  green yet (or vice versa): expected with a manual hand-off, not a failure
+  -- wait for both conditions before running
+  [Tag Both Repos](#tag-both-repos). Don't tag one repo without the other.
+- If pushing the release branch itself fails: local state is complete, just
+  need to retry the push.
 
 **Common issues:**
 - "Push rejected": Upstream has changes. Need to pull first.
