@@ -65,13 +65,13 @@ Other commands (worktree, pr, pgxntool-update) remain in `.claude/commands/`.
 
 ## Skill and Process Doc Quality
 
-These rules apply to `SKILL.md` files, command markdown, and any other process doc under `.claude/`.
+These rules apply to `SKILL.md` files, command markdown, and any other process doc under `.claude/`. They describe required properties of the doc itself — check them by reading the resulting file/diff, not by trusting that a rewrite process was followed.
 
-**CRITICAL**: After rewriting or restructuring part of a skill or process doc, re-read the entire file straight through, as if you were the one executing it, before pushing. A step's instructions must never contradict another section of the same file (e.g., one section pushing repo A before repo B, another section saying B must go first). Large, late-stage rewrites of a single section are the most common place for this kind of self-contradiction to hide, because editing section-by-section doesn't surface whether the doc still agrees with itself end-to-end.
+**CRITICAL**: A step's instructions must never contradict another section of the same file (e.g., one section pushing repo A before repo B, another section saying B must go first). When reviewing a diff that rewrites or restructures part of a skill or process doc, read the whole file, not just the changed hunk — large, late-stage rewrites of a single section are the most common place for this kind of self-contradiction to hide, because editing section-by-section doesn't surface whether the doc still agrees with itself end-to-end.
 
-**CRITICAL**: A skill or process doc must never instruct an action that contradicts this repo's own `CLAUDE.md` policies (e.g., committing or pushing without the required confirmation gate, pushing without triggering the required CI-monitoring step, or skipping a required audit step before a branch is deleted). Check new or rewritten skill steps against `CLAUDE.md` directly, not from memory.
+**CRITICAL**: A skill or process doc must never instruct an action that contradicts this repo's own `CLAUDE.md` policies (e.g., committing or pushing without the required confirmation gate, pushing without triggering the required CI-monitoring step, or skipping a required audit step before a branch is deleted). A diff to a skill/process doc must be checked against `CLAUDE.md`'s actual current text, not against a paraphrase of it.
 
-**RULE**: Any point where a skill or process doc asks the user a yes/no or multiple-choice question must define the follow-up for every answer, not just the common-path one. A branch that just says "continue" without defining what continuing does is incomplete.
+**RULE**: Every point where a skill or process doc asks the user a yes/no or multiple-choice question must state the follow-up for every answer, not just the common-path one. A branch that just says "continue" without defining what continuing does is incomplete.
 
 **RULE**: Markdown fenced code blocks must have a blank line before and after the fence, and every fence must carry a language tag (` ```bash `, not a bare ` ``` `).
 
@@ -176,7 +176,7 @@ Note: "state modifications" here means changes to an already-initialized test en
 
 ### Reuse Canonical Test Helpers
 
-**RULE**: Before deriving a new path or piece of state in a `.bats` test (e.g., the pgxntool checkout location), grep sibling `.bats` files for how they already solve it, and reuse the existing helper/variable (e.g. `PGXNREPO` from `load_test_env`) instead of deriving it independently (e.g. via `$TOPDIR/../pgxntool`). A configured non-default checkout should not silently cause the wrong thing to be tested.
+**RULE**: A `.bats` test must resolve a path or piece of state (e.g., the pgxntool checkout location) via the existing canonical helper/variable (e.g. `PGXNREPO` from `load_test_env`), not by deriving it independently (e.g. via `$TOPDIR/../pgxntool`). A configured non-default checkout should not silently cause the wrong thing to be tested. Before introducing new path-resolution logic, grep sibling `.bats` files for how they already solve it.
 
 ### Template Design Principles
 
