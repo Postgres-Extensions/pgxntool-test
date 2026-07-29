@@ -189,7 +189,13 @@ section once resolved.
    defaulted with `?=`, or normalized via the validate/override pattern in
    `lib.sh` (e.g. `pgxntool_validate_yesno`). Excludes pure internal
    plumbing like `PGXNTOOL_DIR`, `PGXNTOOL_CONTROL_FILES`,
-   `PGXNTOOL_EXTENSIONS` — never meant to be set by users.
+   `PGXNTOOL_EXTENSIONS` — never meant to be set by users. Internal-only
+   override points (seams that exist for pgxntool-test's own tests to
+   stub, not for end users to set — e.g. `_CHECK_STALE_EXPECTED_SCRIPT`)
+   are named with a leading `_` instead of the `PGXNTOOL_` prefix
+   specifically so the name itself signals "not part of the user-facing
+   surface," rather than relying on this prose exclusion list to catch
+   every case.
 4. **Scripts a user is realistically expected to invoke by hand**:
    `setup.sh`, `pgxntool-sync.sh`, `update-setup-files.sh`, and `pgtle.sh`
    (including its own CLI flags, not just the make targets that wrap it).
@@ -292,7 +298,7 @@ Concrete example 2 -- `EXTRA_CLEAN`/PGXS (`test/standard/make-test.bats`): `make
 
 When a Makefile-layer test needs to prove a script genuinely was (or wasn't) called, or that its exit status/output was correctly bubbled up -- not just that a failure from it was tolerated, which is a materially weaker claim -- prefer a dedicated "which script path to run" make variable over faking out an entire directory tree, and stub the script rather than relying on its real behavior.
 
-Concrete example: the `check-stale-expected` recipe in `../pgxntool/base.mk` invokes `$(PGXNTOOL_CHECK_STALE_EXPECTED_SCRIPT)` (default `$(PGXNTOOL_DIR)/test/bin/check-stale-expected.sh`) instead of a hardcoded path. `make_stub_script` in `test/lib/helpers.bash` writes a throwaway stub (configurable exit code, stdout text, marker file) to prove either that the script was never invoked (`PGXNTOOL_ENABLE_CHECK_STALE_EXPECTED=no` test) or that `make` correctly propagates the script's exit status/output (the dedicated propagation test) -- both in `test/standard/make-test.bats`, both pointing `PGXNTOOL_CHECK_STALE_EXPECTED_SCRIPT` at the stub instead of touching `PGXNTOOL_DIR`.
+Concrete example: the `check-stale-expected` recipe in `../pgxntool/base.mk` invokes `$(_CHECK_STALE_EXPECTED_SCRIPT)` (default `$(PGXNTOOL_DIR)/test/bin/check-stale-expected.sh`) instead of a hardcoded path. `make_stub_script` in `test/lib/helpers.bash` writes a throwaway stub (configurable exit code, stdout text, marker file) to prove either that the script was never invoked (`PGXNTOOL_ENABLE_CHECK_STALE_EXPECTED=no` test) or that `make` correctly propagates the script's exit status/output (the dedicated propagation test) -- both in `test/standard/make-test.bats`, both pointing `_CHECK_STALE_EXPECTED_SCRIPT` at the stub instead of touching `PGXNTOOL_DIR`.
 
 This is deliberately narrower than overriding `PGXNTOOL_DIR` itself. `PGXNTOOL_DIR` is read by many unrelated targets (`META.json`, `control.mk`, `verify-results`, `pgtle.sh`, etc.), so faking it out wholesale to intercept one script would require a full copy of the real directory just to swap that one file -- expensive, and it defeats the purpose of the narrower variable. Reach for "add a dedicated variable, then stub just that seam" before reaching for a directory-level fake or an in-place edit of a live, shared checkout (e.g. temporarily `mv`-ing the real script aside).
 
