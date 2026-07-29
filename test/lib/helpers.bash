@@ -909,7 +909,7 @@ ensure_foundation() {
 # General-purpose building block for "swap in a fake script and assert it
 # was/wasn't called, or that its exit status/output was correctly
 # propagated" -- pair it with whatever variable names the real script's
-# path in the code under test (e.g. PGXNTOOL_CHECK_STALE_EXPECTED_SCRIPT for
+# path in the code under test (e.g. _CHECK_STALE_EXPECTED_SCRIPT for
 # check-stale-expected.sh). See "Proving a Script Was/Wasn't Invoked" in
 # CLAUDE.md for the reasoning, including why this is a make-variable
 # override rather than the PATH-shadowing technique BATS-ecosystem mocking
