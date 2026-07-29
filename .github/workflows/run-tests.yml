@@ -157,4 +157,4 @@ jobs:
           # bypasses auto-detection and prevents it from choosing the wrong
           # branch or failing on the detached HEAD state.
           PGXNBRANCH: ${{ inputs.pgxntool-branch }}
-        run: make test
+        run: make test-all
