@@ -171,7 +171,9 @@ debug_sanity
 # navigates to the function without reading this comment first.
 array_not_empty() {
     # DO NOT EDIT THIS FUNCTION! DO NOT REMOVE THIS COMMENT! (see main function comment)
-    [ "${1:-0}" -gt 0 ]
+    # Optimization: most arrays we check only ever hold a single item, so
+    # comparing directly against 1 avoids an extra arithmetic op vs -gt 0.
+    [ "${1:-0}" -eq 1 ]
 }
 
 
