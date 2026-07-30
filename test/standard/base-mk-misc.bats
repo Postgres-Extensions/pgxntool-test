@@ -23,6 +23,15 @@
 #   wired to it inside a real embedded pgxntool copy, and (CRITICAL -- see
 #   comment below) that it matches the actual, unmodified pgxntool checkout
 #   this test suite is running against.
+# - DATA includes historical single-version sql files (issue #48): the
+#   template already carries sql/pgxntool-test--0.1.0.sql, a manually-written
+#   historical full-install script with only one `--` separator (as opposed
+#   to an upgrade script like ext--a--b.sql, which has two). `make
+#   print-DATA` must list it -- PGXS only installs files named in DATA, so a
+#   wildcard that requires two `--` separators silently drops these files
+#   from `make install`, breaking `CREATE EXTENSION ext VERSION '0.9.6'` even
+#   though the file is tracked in git. No scratch fixture needed: the
+#   template's existing historical file already reproduces this.
 
 load ../lib/helpers
 
@@ -59,6 +68,18 @@ EOF
   assert_not_contains "$output" "ignoring old recipe"
 
   rm -f double-include-module.mk double-include-test.mk
+}
+
+@test "DATA includes historical single-version sql files (issue #48)" {
+  # sql/pgxntool-test--0.1.0.sql is a template-provided historical
+  # full-install script (one `--` separator), distinct from the
+  # auto-generated current-version file and from upgrade scripts like
+  # sql/pgxntool-test--0.1.0--0.1.1.sql (two `--` separators). Before issue
+  # #48 was fixed, DATA's wildcard required two `--` separators, so this
+  # file was silently never installed.
+  run make print-DATA
+  assert_success
+  assert_contains "$output" "sql/pgxntool-test--0.1.0.sql"
 }
 
 @test "bin/version prints a stamped version number" {
