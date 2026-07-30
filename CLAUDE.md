@@ -32,6 +32,23 @@ work on that, or did you mean to send this to a different session?"
 This applies to: editing PR branches, pushing to them, closing/reopening them,
 adding commits, modifying PR descriptions, or any other PR-level action.
 
+## GitHub Issues: Repo Routing
+
+Both pgxntool and pgxntool-test have GitHub issues enabled, and it's easy to
+lose track of which repo an issue landed in. When opening an issue:
+
+1. **Choose the right repo:**
+   - Issues about pgxntool itself (the framework's behavior, Makefiles,
+     scripts, docs it ships) go in **pgxntool**.
+   - Issues about pgxntool-test's own development (test harness internals,
+     BATS infrastructure, template maintenance) go in **pgxntool-test**.
+   - Exception: important/critical test-related issues also go in
+     **pgxntool** even though they're test-related, for visibility —
+     don't let them sit only in pgxntool-test where they're easy to miss.
+2. **Bold which repo the issue lives in** somewhere prominent in the issue
+   body (e.g. a leading `**Repo: pgxntool**` or `**Repo: pgxntool-test**`
+   line).
+
 ## Check Master Sync Before Branching
 
 **Before creating a new branch or worktree** in either repo, fetch the
