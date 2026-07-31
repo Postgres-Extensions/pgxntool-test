@@ -109,15 +109,21 @@ The script checks:
 1. Upstream remotes exist (pointing to Postgres-Extensions)
 2. Both working directories are clean
 3. Both repos are on master
-4. Local master is in sync with upstream — if local is simply behind (a
-   clean fast-forward), the script self-heals: it fast-forwards local
-   master to `upstream/master` (`git merge --ff-only`, never a plain merge
-   or rebase) and pushes the result to `origin` (the fork), no user
-   decision needed. Master is only ever updated by fast-forward — it must
-   never gain a merge commit. If a true fast-forward isn't possible for any
-   reason (including local having commits upstream lacks, or `--ff-only`
-   itself refusing), the script does not merge, rebase, or force anything;
-   it stops and reports a hard error requiring manual resolution.
+4. Local master AND the fork (`origin`) are both in sync with upstream —
+   the script self-heals both independently, using `gh repo sync` (the CLI
+   equivalent of GitHub's "Sync fork" button) rather than hand-rolled git
+   plumbing: first `gh repo sync` (no args, from inside the local clone) to
+   fast-forward local master from its upstream parent, then `gh repo sync
+   <owner>/<fork>` to fast-forward the fork on GitHub directly. Both are
+   checked and fixed unconditionally, not just when local was found behind
+   — the fork can go stale independently of local (e.g. a prior run
+   updated local but was interrupted before reaching the fork sync, or
+   local already matched upstream so there was never a reason to touch the
+   fork). `gh repo sync` only ever fast-forwards — it is never invoked with
+   `--force` here, so it fails (non-zero exit) rather than creating a merge
+   commit or a hard reset if a true fast-forward isn't possible on either
+   side. That failure is treated as a hard error requiring manual
+   resolution, never auto-merged, auto-rebased, or forced.
 5. Version format is valid and tag doesn't already exist
 6. HISTORY.asc has a STABLE section
 

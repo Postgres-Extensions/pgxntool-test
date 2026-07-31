@@ -93,80 +93,65 @@ echo "pgxntool-test: $pgxntool_test_branch"
 [ "$pgxntool_test_branch" = "master" ] || errors+=("pgxntool-test: on branch '$pgxntool_test_branch', not master")
 echo
 
-# 4. Fetch and check sync
+# 4. Sync local master and the fork from upstream
 #
-# If local master is simply behind upstream (a clean fast-forward is
-# possible - local has no commits upstream lacks), self-heal: fast-forward
-# local master to upstream/master and push the result to the fork remote
-# (origin), rather than just warning and leaving it to the user. Genuine
-# divergence (local has commits upstream doesn't have) is NOT auto-merged
-# or force-pushed - that's left as a hard error requiring manual resolution,
-# since silently merging/rebasing here could be lossy.
+# Uses `gh repo sync` -- the CLI equivalent of GitHub's "Sync fork" button
+# -- rather than hand-rolled git fetch/merge/push plumbing. By default it
+# performs a fast-forward-only update and FAILS (non-zero exit) rather than
+# creating a merge commit or rewriting history if a true fast-forward isn't
+# possible. NEVER pass --force to either call below -- that switches gh to
+# a hard reset instead of refusing, which could destroy commits on
+# whichever side gets reset.
+#
+# Two independent syncs per repo, since either can go stale independently
+# of the other (e.g. a prior run updated local but was interrupted before
+# reaching the fork sync, or local already matched upstream from an earlier
+# session so there was never a reason to touch the fork):
+#   1. `gh repo sync` (no destination-repository argument, run from inside
+#      the local clone) updates local master from its upstream parent.
+#   2. `gh repo sync <owner>/<fork>` updates the fork on GitHub directly
+#      (the actual "Sync fork" button equivalent), independent of #1.
+# Both calls resolve their source (the upstream parent) via GitHub's own
+# fork-parent metadata, not our locally-configured remote names -- so this
+# works regardless of what the upstream remote happens to be named locally.
+fork_slug() {
+    local repo_path="$1"
+    git -C "$repo_path" remote get-url origin \
+        | sed -E 's#^(https://github\.com/|git@github\.com:)##; s#\.git$##'
+}
+
 sync_repo() {
     local repo_path="$1"
     local repo_label="$2"
-    local upstream_remote="$3"
-    local branch="$4"
+    local slug output
 
-    local local_head upstream_head
-    local_head=$(git -C "$repo_path" rev-parse HEAD)
-    upstream_head=$(git -C "$repo_path" rev-parse "$upstream_remote/master" 2>/dev/null || echo "unknown")
+    slug=$(fork_slug "$repo_path")
 
-    if [ "$local_head" = "$upstream_head" ]; then
-        echo "$repo_label: in sync with $upstream_remote/master ($local_head)"
-        return
-    fi
-
-    if [ "$branch" != "master" ]; then
-        echo "$repo_label: DIVERGED from $upstream_remote/master"
-        echo "  local:    $local_head"
-        echo "  upstream: $upstream_head"
-        echo "  not on master ('$branch') - skipping auto-sync"
-        errors+=("$repo_label: local master diverges from $upstream_remote/master and current branch is not master")
-        return
-    fi
-
-    # Is local a strict ancestor of upstream (i.e. purely behind, with
-    # nothing of its own ahead)? Guarded with if/else so a non-zero exit
-    # from --is-ancestor (the expected "not an ancestor" case) doesn't trip
-    # set -e.
-    if git -C "$repo_path" merge-base --is-ancestor "$local_head" "$upstream_head"; then
-        echo "$repo_label: BEHIND $upstream_remote/master - fast-forwarding"
-        echo "  local:    $local_head"
-        echo "  upstream: $upstream_head"
-        # NEVER use a plain merge here -- master must only ever fast-forward,
-        # never gain a merge commit. --ff-only makes git refuse (non-zero
-        # exit) instead of creating a merge commit if a true fast-forward
-        # somehow isn't possible (e.g. a race with a concurrent push landing
-        # between the ancestor check above and this merge). Guarded with
-        # if/else, not `set -e`, so that refusal is caught and reported as
-        # the same divergence error below -- never retried with a different
-        # strategy (rebase, plain merge, force-push) and never forced.
-        if git -C "$repo_path" merge --ff-only "$upstream_remote/master"; then
-            git -C "$repo_path" push origin master
-            echo "$repo_label: fast-forwarded master $local_head -> $upstream_head and pushed to origin"
-        else
-            echo "$repo_label: fast-forward merge unexpectedly failed"
-            errors+=("$repo_label: git merge --ff-only failed even though local was expected to be a strict ancestor of $upstream_remote/master - resolve manually")
+    echo "$repo_label: syncing local master from upstream (gh repo sync)..."
+    if output=$(cd "$repo_path" && gh repo sync 2>&1); then
+        if [ -n "$output" ]; then
+            echo "$output" | sed 's/^/  /'
         fi
     else
-        echo "$repo_label: DIVERGED from $upstream_remote/master (local has commits upstream lacks)"
-        echo "  local:    $local_head"
-        echo "  upstream: $upstream_head"
-        errors+=("$repo_label: local master has diverged from $upstream_remote/master (not a clean fast-forward) - resolve manually")
+        echo "$output" | sed 's/^/  /'
+        errors+=("$repo_label: gh repo sync (local) failed -- local master may have diverged from upstream in a way that isn't a clean fast-forward; resolve manually")
+        return
+    fi
+
+    echo "$repo_label: syncing fork ($slug) from upstream (gh repo sync $slug)..."
+    if output=$(gh repo sync "$slug" 2>&1); then
+        if [ -n "$output" ]; then
+            echo "$output" | sed 's/^/  /'
+        fi
+    else
+        echo "$output" | sed 's/^/  /'
+        errors+=("$repo_label: gh repo sync (fork $slug) failed -- the fork's master may have diverged from upstream in a way that isn't a clean fast-forward; this is unexpected since the fork should be a pure mirror, and needs manual investigation rather than an automatic overwrite")
     fi
 }
 
 echo "--- Sync Status ---"
-if [ -n "$PGXNTOOL_UPSTREAM" ]; then
-    git -C "$PGXNTOOL_DIR" fetch "$PGXNTOOL_UPSTREAM" 2>/dev/null
-    sync_repo "$PGXNTOOL_DIR" "pgxntool" "$PGXNTOOL_UPSTREAM" "$pgxntool_branch"
-fi
-
-if [ -n "$PGXNTOOL_TEST_UPSTREAM" ]; then
-    git -C "$PGXNTOOL_TEST_DIR" fetch "$PGXNTOOL_TEST_UPSTREAM" 2>/dev/null
-    sync_repo "$PGXNTOOL_TEST_DIR" "pgxntool-test" "$PGXNTOOL_TEST_UPSTREAM" "$pgxntool_test_branch"
-fi
+sync_repo "$PGXNTOOL_DIR" "pgxntool"
+sync_repo "$PGXNTOOL_TEST_DIR" "pgxntool-test"
 echo
 
 # 5. Version checks
