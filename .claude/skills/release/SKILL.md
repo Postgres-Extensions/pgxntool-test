@@ -109,11 +109,21 @@ The script checks:
 1. Upstream remotes exist (pointing to Postgres-Extensions)
 2. Both working directories are clean
 3. Both repos are on master
-4. Local master is in sync with upstream
+4. Local master is in sync with upstream — if local is simply behind (a
+   clean fast-forward), the script self-heals: it fast-forwards local
+   master to `upstream/master` (`git merge --ff-only`, never a plain merge
+   or rebase) and pushes the result to `origin` (the fork), no user
+   decision needed. Master is only ever updated by fast-forward — it must
+   never gain a merge commit. If a true fast-forward isn't possible for any
+   reason (including local having commits upstream lacks, or `--ff-only`
+   itself refusing), the script does not merge, rebase, or force anything;
+   it stops and reports a hard error requiring manual resolution.
 5. Version format is valid and tag doesn't already exist
 6. HISTORY.asc has a STABLE section
 
 **If the script exits with errors:** STOP and show the errors to the user.
+This includes genuine master divergence from check 4 — that must be
+resolved by hand, not auto-merged.
 
 **If there are warnings:** Show them and ask the user how to proceed.
 
@@ -182,6 +192,12 @@ time to finish while
 make any release-related change to git — until both sets of findings below
 have been retrieved and inspected.** See
 [Inspect API Documentation Review Findings](#inspect-api-documentation-review-findings).
+
+Before launching, read (and fold into each agent's prompt) the "User-Facing
+API Surface of pgxntool" section in `CLAUDE.md` — it records standing
+exceptions (e.g. `DEBUG` being intentionally undocumented) that must not be
+re-flagged as findings; don't duplicate that list here, just point agents at
+it.
 
 Launch two independent review efforts. Each may be one agent or a small set
 of agents if splitting the surface area (e.g. by file) makes sense; give

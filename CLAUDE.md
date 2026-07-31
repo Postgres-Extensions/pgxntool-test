@@ -178,8 +178,21 @@ section once resolved.
 1. **Make targets pgxntool defines**, including dev-helper targets like
    `list` and `print-%` (they exist specifically to help users introspect
    the Makefile). Excludes:
-   - Targets pgxntool inherits from PGXS unmodified (`install`,
-     `installcheck`, `submake-*`, etc.).
+   - Targets pgxntool inherits from PGXS **unmodified** (`install`,
+     `submake-*`, etc.) — but only to the extent they're genuinely
+     unmodified. The moment pgxntool adds or changes a prerequisite,
+     recipe body, or variable (e.g. `EXTRA_CLEAN`) on a PGXS-named target,
+     that modification is IN SCOPE and must be tracked like any other API
+     surface item — the underlying PGXS behavior pgxntool didn't touch
+     stays out of scope, but pgxntool's own authored changes to a
+     shared-name target don't get to hide behind "it's a PGXS target."
+     This is settled policy: it has already caused two real misses when
+     treated as excluded-by-name-alone — a stale README claim about
+     `test`'s prerequisites, and `installcheck: install` (issue #79, a
+     genuine ordering-bug fix to the PGXS-named `installcheck` target)
+     nearly being waved through as "out of scope" during 2.3.0 release
+     prep. Both should have been (and now are) tracked the same as any
+     other API surface change.
    - Pure generated-file targets (`META.json`, `meta.mk`, `control.mk`) —
      build plumbing, not something a user intentionally runs.
    - Conditionally-defined helper targets that exist purely to support
@@ -189,15 +202,10 @@ section once resolved.
      primary target they support (e.g. `test-build` itself) remains in
      scope if it's meant to be invoked directly and is independently
      documented.
-   - **Known gap**: pgxntool's own modifications to shared-name PGXS
-     targets (e.g. `test`'s prerequisites, `clean`'s `EXTRA_CLEAN`
-     additions) are currently excluded along with the rest of that
-     target's PGXS lineage, since the exclusion is by name alone. This has
-     already hidden real drift once (a stale README claim about `test`'s
-     prerequisites) — revisit if it keeps happening.
    - Finding these requires reading the actual source, not just running
-     `make list` — conditionally-gated targets, and anything else a
-     discovery tool can't fully enumerate, only show up by inspecting
+     `make list` — conditionally-gated targets, pgxntool's own additions
+     to PGXS-named targets, and anything else a discovery tool can't
+     fully enumerate, only show up by inspecting
      `base.mk`/`control.mk.sh`/`meta.mk.sh` directly.
 2. **Target prerequisites worth documenting by name** even when not
    invoked directly (e.g. `testdeps`), since extension authors may
@@ -220,6 +228,16 @@ section once resolved.
    fine for users to know it exists), but the specific level numbers are
    an internal implementation detail, not a documented contract — changing
    them is not a behavior change that needs a `HISTORY.asc` entry.
+   `DEBUG`'s absence from `README.asc`/`CLAUDE.md` documentation is NOT
+   itself a finding — API-documentation review agents (used by the
+   `/release` skill, see `.claude/skills/release/SKILL.md`) must not flag
+   "`DEBUG` exists but isn't documented" as a gap, regardless of how many
+   scripts reference it. This is the first entry in what should be treated
+   as a general pattern: when a documentation gap is judged intentional
+   rather than an oversight, record that decision here as a standing
+   exception so later reviews don't re-flag and re-litigate the same
+   question release after release — add new entries to this list rather
+   than raising them fresh each time.
 6. **`../pgxntool/CLAUDE.md` is in scope, not exempt as "doc-only."** Unlike
    ordinary dev-only documentation, this file ships into every consumer
    project via subtree and is written for AI agents working in *those*
