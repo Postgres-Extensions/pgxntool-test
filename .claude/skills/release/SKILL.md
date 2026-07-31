@@ -319,6 +319,53 @@ only -- it's not a standing order for HISTORY.asc as a whole, and older,
 already-released sections are never touched. If an entry's category is
 genuinely unclear, ask the user rather than guessing.
 
+### Compile the complete fixed-issues line
+
+The `/commit` skill (step 3b) now maintains this line incrementally, one
+commit at a time, whenever a commit's message carries a `Fixes #N` for a
+pgxntool issue -- so by release time the STABLE section's fixed-issues line
+should already list most or all of what belongs here. This step is the
+**audit/safety net**, not the primary mechanism: it catches anything that
+slipped through the per-commit step (a commit made outside `/commit`, a
+`Fixes #N` added to a PR body after the commit landed, manual edits, etc.)
+and re-derives the complete, authoritative list from `release..HEAD` history
+to verify against what's already in the file.
+
+Independent of the individual STABLE entries above (which only narrate
+changes important enough to write up), compile one line listing *every*
+pgxntool issue actually closed by a commit in `release..HEAD` -- including
+issues covered by a change too minor to warrant its own STABLE entry (e.g.
+a one-line internal fix nobody bothered to narrate). This also catches
+issues GitHub's auto-close silently failed to close:
+
+1. For every PR merged in `release..HEAD`, read its own
+   `closingIssuesReferences` (`gh pr view <n> --json closingIssuesReferences`)
+   -- GitHub's own parsed understanding of which issues that merge closes.
+2. ALSO read the PR body directly for any other `Fixes #N` / `Closes #N` /
+   `Resolves #N` mentions not already present in that field. **GitHub only
+   recognizes the first issue in a single comma-separated line** like
+   `Fixes #7, #14, #19` -- every issue after the first is silently dropped,
+   with no error or warning. This is not hypothetical: 2.2.0 shipped with
+   issues #14, #19, #50, and #53 all genuinely fixed by one PR whose body
+   read `Fixes #7, #14, #19, #28, #50, #53` -- only #7 auto-closed, and the
+   other four sat open on GitHub until caught by a manual post-release audit.
+3. Union both sources per PR, then union across all PRs in the release, then
+   union with whatever the per-commit step has already put in the file.
+
+Reconcile against the existing fixed-issues line at the end of the STABLE
+section (after the last `==` entry, before the next version's heading) --
+add anything this audit found that isn't already there, e.g.:
+
+```text
+Issues fixed in this release: #7, #14, #19, #28, #46, #50, #53, #54, #57, #62, #65
+```
+
+**Then check each listed issue's actual state on GitHub.** Any still open
+despite being genuinely fixed didn't actually auto-close -- close it now
+with a comment linking to the fixing PR, rather than deferring it to a
+later audit. Apply the same check to any pgxntool-test issue a paired PR's
+body referenced.
+
 ### Stamp the version
 
 Edit `../pgxntool/HISTORY.asc`: replace the `STABLE` heading with the version number.

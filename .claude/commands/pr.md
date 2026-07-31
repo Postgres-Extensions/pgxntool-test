@@ -37,6 +37,17 @@ Create pull requests for pgxntool and pgxntool-test changes, following the two-r
 - Bad: `"Add tests for pgxntool PR #31 (fix results ordering, whitespace, overrides)"`
 - Good: `"Fix results ordering, control file whitespace, ENABLE_* overrides"`
 
+## Closing GitHub Issues (CRITICAL)
+
+When a PR fixes one or more issues, give each its own `Fixes #N` / `Closes
+#N` / `Resolves #N` line in the PR body -- never combine them into a single
+comma-separated list like `Fixes #7, #14, #19`. **GitHub's auto-close only
+recognizes the first issue number in that pattern and silently drops every
+issue after it, with no error or warning.** This caused real drift in the
+2.2.0 release: one PR's `Fixes #7, #14, #19, #28, #50, #53` line only
+auto-closed #7 -- the other four issues were genuinely fixed but stayed
+open on GitHub until a manual post-release audit caught it.
+
 ## PR Description Guidelines
 
 **Think: "Someone in 2 years reading this in the commit log - what do they need to know?"**

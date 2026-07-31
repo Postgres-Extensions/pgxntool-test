@@ -1,5 +1,38 @@
 # Commit Message Format Guide
 
+## Closing GitHub Issues (CRITICAL)
+
+When a commit fixes one or more issues, give each its own `Fixes #N` /
+`Closes #N` / `Resolves #N` line -- never combine them into a single
+comma-separated list like `Fixes #7, #14, #19`. **GitHub's auto-close only
+recognizes the first issue number in that pattern and silently drops every
+issue after it, with no error or warning.** This caused real drift in the
+2.2.0 release: one commit's `Fixes #7, #14, #19, #28, #50, #53` line only
+auto-closed #7 -- the other four issues were genuinely fixed but stayed
+open on GitHub until a manual post-release audit caught it.
+
+Correct:
+```
+Fixes #7.
+Fixes #14.
+Fixes #19.
+```
+
+Incorrect:
+```
+Fixes #7, #14, #19.
+```
+
+## Maintaining the HISTORY.asc fixed-issues line (pgxntool changes)
+
+Whenever a commit's `Fixes #N` / `Closes #N` / `Resolves #N` refers to a
+pgxntool issue, add that issue number to the STABLE section's fixed-issues
+line in `../pgxntool/HISTORY.asc` -- regardless of whether the change is
+significant enough for its own narrative `==` entry. These are two separate
+decisions: "does this need a bullet explaining what changed" (maybe not) vs
+"was a numbered issue closed" (if yes, it always goes on the list). See the
+commit skill's step 3b for the mechanics.
+
 ## Item Ordering (CRITICAL)
 
 Order all items (changes, bullet points) by **decreasing importance**:
