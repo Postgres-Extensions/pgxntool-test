@@ -17,7 +17,7 @@ Create git commits following project standards and safety protocols for pgxntool
 
 | Rule | Details |
 |------|---------|
-| **Git Safety** | Never update git config. Never force push -- not even to your own already-open/draft PR branch to fix something minor (a typo, a HISTORY.asc trim) -- unless the user explicitly tells you to force-push. Add a new commit instead. Never skip hooks unless requested. |
+| **Git Safety** | Never update git config. Never force push -- not even to your own already-open/draft PR branch, not even when a task (a rebase, a restructure) seems to structurally require rewriting history. A task *implying* a rewrite is a signal to stop and ask, never a substitute for asking. Before any force-push, ask a literal question ("this needs a force-push to `<branch>` -- go ahead?") and wait for a real reply -- inferring a yes from the wording of the request is exactly what NOT to do. Add a new commit instead unless/until told otherwise. Never skip hooks unless requested. |
 | **Attribution** | No "Generated with Claude Code" in body. Co-Authored-By trailer is OK. |
 | **Multi-Repo** | Commit BOTH repos if both have changes (unless told otherwise). No empty commits. Never create a branch on a repo that has no changes. |
 | **Testing** | ALL tests must pass. ANY failure = STOP and ask user. No rationalizing failures. |
@@ -157,6 +157,6 @@ Check both repos if both were pushed. Report any CI failures to the user immedia
 ## Restrictions
 
 - DO NOT push unless explicitly asked
-- DO NOT force-push a PR branch unless the user explicitly asks you to -- including your own unreviewed draft PR. If a pushed commit needs correcting, add a new commit; don't amend and force-push on your own initiative.
+- DO NOT force-push a PR branch unless the user explicitly asks you to -- including your own unreviewed draft PR, and including when a rebase/restructure task seems to require it. Ask first, literally, every time; don't infer a yes from the task's wording. If a pushed commit needs correcting, add a new commit instead unless/until told otherwise.
 - DO NOT commit files with secrets (.env, credentials.json)
 - Never use `-i` flags (git commit -i, git rebase -i)
