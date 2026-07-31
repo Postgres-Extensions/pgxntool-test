@@ -478,7 +478,10 @@ gh pr create --repo Postgres-Extensions/pgxntool-test \
 pgxntool release-VERSION branch -- pgxntool's own release PR is doc-only \
 and skips the Postgres test matrix entirely. It changes nothing in \
 pgxntool-test (empty commit) and must NOT be merged. Close it once its CI \
-is green."
+is green.
+
+Companion PR (should be merged normally once CI is green): \
+Postgres-Extensions/pgxntool#<pgxntool-pr-number>"
 ```
 
 ```bash
@@ -487,8 +490,24 @@ git push PGXNTOOL_UPSTREAM release-VERSION
 gh pr create --repo Postgres-Extensions/pgxntool \
   --base master --head release-VERSION \
   --title "Release VERSION" \
-  --body "Stamps HISTORY.asc for VERSION. Companion (do-not-merge, CI trigger only): pgxntool-test release-VERSION."
+  --body "Stamps HISTORY.asc for VERSION. This PR should be merged normally.
+
+Companion PR (must NOT be merged -- exists only to trigger a real CI test \
+run): Postgres-Extensions/pgxntool-test#<pgxntool-test-pr-number>"
 ```
+
+**Why the wording matters:** an earlier release's pgxntool PR body read
+"Companion (do-not-merge, CI trigger only): pgxntool-test release-VERSION"
+-- a single run-on sentence where the do-not-merge parenthetical, read out
+of context, could be misread as applying to the PR you're looking at
+instead of its companion. State plainly, as its own sentence, whether
+*this* PR should or shouldn't be merged before ever mentioning the other
+one. Backfill the actual PR numbers into `<pgxntool-pr-number>` /
+`<pgxntool-test-pr-number>` once both PRs exist (each is opened after the
+other in the commands above, so the second `gh pr create` can reference
+the first PR's already-known number; if opening both concurrently via
+parallel subagents, edit the missing cross-reference in with `gh pr edit
+--body` immediately after both numbers are known).
 
 Per this project's CI-monitoring rule, immediately start a background
 monitor for each push (exact SHA, not `--branch`, to avoid a race with any
