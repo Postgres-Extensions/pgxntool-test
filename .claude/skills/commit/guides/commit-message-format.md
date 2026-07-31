@@ -23,6 +23,16 @@ Incorrect:
 Fixes #7, #14, #19.
 ```
 
+## Maintaining the HISTORY.asc fixed-issues line (pgxntool changes)
+
+Whenever a commit's `Fixes #N` / `Closes #N` / `Resolves #N` refers to a
+pgxntool issue, add that issue number to the STABLE section's fixed-issues
+line in `../pgxntool/HISTORY.asc` -- regardless of whether the change is
+significant enough for its own narrative `==` entry. These are two separate
+decisions: "does this need a bullet explaining what changed" (maybe not) vs
+"was a numbered issue closed" (if yes, it always goes on the list). See the
+commit skill's step 3b for the mechanics.
+
 ## Item Ordering (CRITICAL)
 
 Order all items (changes, bullet points) by **decreasing importance**:

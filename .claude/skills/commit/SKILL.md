@@ -17,11 +17,11 @@ Create git commits following project standards and safety protocols for pgxntool
 
 | Rule | Details |
 |------|---------|
-| **Git Safety** | Never update git config. Never force push. Never skip hooks unless requested. |
+| **Git Safety** | Never update git config. Never force push -- not even to your own already-open/draft PR branch to fix something minor (a typo, a HISTORY.asc trim) -- unless the user explicitly tells you to force-push. Add a new commit instead. Never skip hooks unless requested. |
 | **Attribution** | No "Generated with Claude Code" in body. Co-Authored-By trailer is OK. |
 | **Multi-Repo** | Commit BOTH repos if both have changes (unless told otherwise). No empty commits. Never create a branch on a repo that has no changes. |
 | **Testing** | ALL tests must pass. ANY failure = STOP and ask user. No rationalizing failures. |
-| **HISTORY.asc** | Update for significant user-visible pgxntool changes. Propose entry, get confirmation. |
+| **HISTORY.asc** | Update for significant user-visible pgxntool changes. Propose entry, get confirmation. Separately and always: any `Fixes #N`/`Closes #N`/`Resolves #N` for a pgxntool issue must be added to the running "Issues fixed" line, even when the change is too minor for its own bullet (see step 3b). |
 
 ## Workflow
 
@@ -71,6 +71,23 @@ If update needed:
 
    [existing content...]
    ```
+
+### 3b. Update the "Issues fixed" line (pgxntool changes only, whenever an issue is fixed)
+
+Independent of the bullet-entry decision above: if this commit's message
+contains a `Fixes #N` / `Closes #N` / `Resolves #N` for a pgxntool issue, that
+issue number belongs on the STABLE section's running fixed-issues line --
+even when the change is too minor to warrant its own `==` entry. Don't defer
+this to release time; maintain it incrementally, one commit at a time. (The
+`/release` skill's own "Compile the complete fixed-issues line" step is a
+final audit/safety net for anything that slipped through this per-commit
+step -- e.g. a commit made outside this skill -- not the primary mechanism.)
+
+- Line lives at the end of the STABLE section (last line before the next
+  version's heading), format: `Issues fixed in this release: #7, #14, #19`
+- If it doesn't exist yet, create it. If it exists, add the new number(s),
+  keep the list deduped and in ascending numeric order.
+- pgxntool issues only -- pgxntool-test has no equivalent list.
 
 ### 4. Draft Commit Messages
 
@@ -140,5 +157,6 @@ Check both repos if both were pushed. Report any CI failures to the user immedia
 ## Restrictions
 
 - DO NOT push unless explicitly asked
+- DO NOT force-push a PR branch unless the user explicitly asks you to -- including your own unreviewed draft PR. If a pushed commit needs correcting, add a new commit; don't amend and force-push on your own initiative.
 - DO NOT commit files with secrets (.env, credentials.json)
 - Never use `-i` flags (git commit -i, git rebase -i)
