@@ -6,7 +6,7 @@
 # - Script exists and is executable
 # - make pgtle creates pg_tle directory
 # - Generates both version files by default
-# - PGTLE_VERSION limits output to specific version
+# - PGXNTOOL_PGTLE_VERSION limits output to specific version
 # - Version-specific schema parameter handling
 # - All versions and upgrade paths included
 # - Control file fields properly parsed
@@ -52,15 +52,15 @@ teardown_file() {
   [ -f "pg_tle/1.5.0+/pgxntool-test.sql" ]
 }
 
-@test "pgtle: make pgtle PGTLE_VERSION=X limits output to specified version (issue #65)" {
-  # base.mk's pgtle target must forward the PGTLE_VERSION make variable
-  # through to pgtle.sh's --pgtle-version flag. It previously did not,
-  # so `make pgtle PGTLE_VERSION=1.5.0+` silently generated all three
-  # version ranges instead of just the requested one.
+@test "pgtle: make pgtle PGXNTOOL_PGTLE_VERSION=X limits output to specified version (issue #65)" {
+  # base.mk's pgtle target must forward the PGXNTOOL_PGTLE_VERSION make
+  # variable through to pgtle.sh's --pgtle-version flag. It previously did
+  # not, so `make pgtle PGXNTOOL_PGTLE_VERSION=1.5.0+` silently generated all
+  # three version ranges instead of just the requested one.
   run rm -rf pg_tle
   assert_success
 
-  run make pgtle PGTLE_VERSION=1.5.0+
+  run make pgtle PGXNTOOL_PGTLE_VERSION=1.5.0+
   assert_success
 
   [ -f "pg_tle/1.5.0+/pgxntool-test.sql" ]
@@ -70,7 +70,8 @@ teardown_file() {
 
 @test "pgtle: --pgtle-version limits output to specific version" {
   # Verifies the script's --pgtle-version flag works correctly when called
-  # directly (independent of the Makefile's PGTLE_VERSION wiring above).
+  # directly (independent of the Makefile's PGXNTOOL_PGTLE_VERSION wiring
+  # above).
   run rm -rf pg_tle
   assert_success
 
@@ -80,6 +81,24 @@ teardown_file() {
   [ -f "pg_tle/1.5.0+/pgxntool-test.sql" ]
   [ ! -f "pg_tle/1.0.0-1.4.0/pgxntool-test.sql" ]
   [ ! -f "pg_tle/1.4.0-1.5.0/pgxntool-test.sql" ]
+}
+
+@test "pgtle: env var PGTLE_VERSION does not collide with make pgtle (issue #78)" {
+  # base.mk's pgtle target used to read a make variable named PGTLE_VERSION,
+  # which make auto-imports from an identically-named environment variable.
+  # A CI job setting PGTLE_VERSION for an unrelated purpose (which pg_tle to
+  # test against) silently limited `make pgtle` output to one version range
+  # instead of generating all of them. Renamed to PGXNTOOL_PGTLE_VERSION so
+  # this env var no longer has any effect on the make variable.
+  run rm -rf pg_tle
+  assert_success
+
+  PGTLE_VERSION=1.5.2 run make pgtle
+  assert_success
+
+  [ -f "pg_tle/1.0.0-1.4.0/pgxntool-test.sql" ]
+  [ -f "pg_tle/1.4.0-1.5.0/pgxntool-test.sql" ]
+  [ -f "pg_tle/1.5.0+/pgxntool-test.sql" ]
 }
 
 @test "pgtle: 1.0.0-1.4.0 file does not have schema parameter" {
