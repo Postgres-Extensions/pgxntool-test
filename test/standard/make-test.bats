@@ -145,19 +145,16 @@ EOF
 # Test: installcheck must run after install, even when pulled in indirectly
 # (issue #79)
 #
-# `.IGNORE: installcheck` plus `installcheck: $(TEST_RESULT_FILES) ...` gives
-# installcheck its own prerequisite chain, separate from `install`. `test`'s
-# TEST_DEPS lists `install installcheck` (and, when enabled,
-# check-stale-expected, which itself depends on installcheck -- see issue
-# #14 below) as independent, unordered prerequisites of `test` -- Make does
-# not guarantee unrelated same-target prerequisites build left-to-right.
-# Nothing stopped installcheck's own chain (pulled in either directly or via
-# check-stale-expected's dependency on it) from running before `install`
-# ever did. On a genuinely uninstalled tree, pg_regress then runs against a
-# database missing the extension, and every SQL test fails with "schema ...
-# does not exist". base.mk now has an explicit `installcheck: install` edge
-# (mirroring test-build's own `test-build: install` edge) so install always
-# runs first, regardless of what pulls installcheck in.
+# `test`'s TEST_DEPS lists `install installcheck` (and check-stale-expected,
+# which itself depends on installcheck -- see issue #14 below) as
+# independent, unordered prerequisites -- Make doesn't guarantee unrelated
+# same-target prerequisites build left-to-right. Before this fix,
+# installcheck had no dependency on install, so nothing stopped it from
+# running first: on a genuinely uninstalled tree, pg_regress ran against a
+# database missing the extension, failing every test with "schema ... does
+# not exist". base.mk now has an explicit `installcheck: install` edge
+# (mirroring test-build's own `test-build: install` edge), so install
+# always runs first.
 
 @test "installcheck's parsed prerequisite list includes install (issue #79, structural proof)" {
   # make -p dumps Make's internal parsed-rule database, independent of
