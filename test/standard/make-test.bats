@@ -9,7 +9,10 @@
 # - `make test` succeeds against the template's known-good state
 # - EXTRA_CLEAN targets the real $(TESTOUT)/results/ directory (issue #7)
 # - unique per-directory database naming (REGRESS_DBNAME)
+# - installcheck always runs after install, even when pulled in indirectly
+#   (issue #79)
 # - check-stale-expected catches orphaned test/expected/*.out files (issue #14)
+# - `make test` exits non-zero on a real regression.diffs mismatch (issue #49)
 # - verify-results blocks `make results` when tests are failing, detects
 #   pgtap failures, and can be disabled
 
@@ -110,8 +113,8 @@ setup() {
   # template/test/sql/base.sql already documents and relies on -- hand-writing
   # just the bare value here (without \set ECHO none) previously produced an
   # expected file that could never match pg_regress's real output; that
-  # mismatch went unnoticed because make test's own diff output was never
-  # inspected here.
+  # mismatch went unnoticed only because of issue #49 (make test always
+  # exiting 0 regardless of regression.diffs).
   mkdir -p test/sql
   cat > test/sql/dbname.sql <<'EOF'
 \set ECHO none
@@ -137,6 +140,60 @@ EOF
 
   run make test
   assert_success
+}
+
+# Test: installcheck must run after install, even when pulled in indirectly
+# (issue #79)
+#
+# `.IGNORE: installcheck` plus `installcheck: $(TEST_RESULT_FILES) ...` gives
+# installcheck its own prerequisite chain, separate from `install`. `test`'s
+# TEST_DEPS lists `install installcheck` (and, when enabled,
+# check-stale-expected, which itself depends on installcheck -- see issue
+# #14 below) as independent, unordered prerequisites of `test` -- Make does
+# not guarantee unrelated same-target prerequisites build left-to-right.
+# Nothing stopped installcheck's own chain (pulled in either directly or via
+# check-stale-expected's dependency on it) from running before `install`
+# ever did. On a genuinely uninstalled tree, pg_regress then runs against a
+# database missing the extension, and every SQL test fails with "schema ...
+# does not exist". base.mk now has an explicit `installcheck: install` edge
+# (mirroring test-build's own `test-build: install` edge) so install always
+# runs first, regardless of what pulls installcheck in.
+
+@test "installcheck's parsed prerequisite list includes install (issue #79, structural proof)" {
+  # make -p dumps Make's internal parsed-rule database, independent of
+  # runtime scheduling order. This proves the `installcheck: install` edge
+  # genuinely exists in base.mk -- unlike a real `make test` run, which could
+  # theoretically pass even on a broken base.mk purely by luck of Make's
+  # scheduling order for unrelated same-target prerequisites (see the
+  # behavioral test below).
+  run make -p -n installcheck
+  assert_success
+
+  local prereq_line
+  prereq_line=$(echo "$output" | awk '/^installcheck:/{print; exit}')
+  [ -n "$prereq_line" ] || error "installcheck rule not found in 'make -p' database dump"
+
+  echo "$prereq_line" | grep -qw install || \
+    error "installcheck's parsed prerequisite list does not include 'install': $prereq_line"
+}
+
+@test "make test succeeds from a genuinely uninstalled state (issue #79)" {
+  skip_if_no_postgres
+
+  # The `make -p` test above is the primary proof for this issue (the
+  # dependency edge genuinely exists in the parsed makefile). This test is a
+  # complementary real-world sanity check of the whole pipeline: on a
+  # genuinely uninstalled tree, does pg_regress actually find the extension
+  # already installed by the time it runs? `make uninstall` forces that
+  # precondition regardless of what any earlier test in this file already
+  # installed on the shared PostgreSQL instance -- the original bug was
+  # historically masked in exactly that way.
+  run make uninstall
+  assert_success
+
+  run make test
+  assert_success
+  assert_not_contains "$output" "does not exist"
 }
 
 # Test: check-stale-expected (issue #14)
@@ -280,12 +337,18 @@ EOF
 }
 
 # ============================================================================
-# verify-results / make results (issue #14)
+# verify-results / make results (issues #14, #49)
 # ============================================================================
 #
-# pgxntool makes verify-results depend on test (verify-results: test), so
-# `make results` re-runs the tests and checks the FRESH regression.diffs,
-# even under make -j.
+# `results` depends on `verify-results` (when enabled), which depends on
+# $(TEST_DEPS) -- testdeps/install/installcheck/etc -- directly, NOT on the
+# `test` target itself (see base.mk's comment above `verify-results:
+# $(TEST_DEPS)`). So `make results` reruns the suite by pulling in those
+# prerequisites fresh, rather than by invoking `test`. This matters because
+# `test`'s own recipe now exits 1 as soon as it sees regression.diffs (issue
+# #49's fix, tested below) -- if `results`/`verify-results` depended on
+# `test` instead, that exit would abort the chain before verify-results ever
+# got to inspect the diff and report it.
 
 @test "verify-results succeeds with clean template state" {
   skip_if_no_postgres
@@ -294,12 +357,10 @@ EOF
   assert_success
 }
 
-@test "verify-results depends on test execution" {
-  # pgxntool makes verify-results depend on test (verify-results: test) so
-  # that `make results` re-runs the tests and checks the FRESH
-  # regression.diffs, even under make -j. Confirm the dependency is wired: a
-  # dry-run of verify-results must include the installcheck recipe pulled in
-  # via the test target.
+@test "verify-results pulls in installcheck via TEST_DEPS, not by depending on test" {
+  # Confirm the dependency is wired: a dry-run of verify-results must
+  # include the installcheck recipe pulled in via $(TEST_DEPS) (see the
+  # section header above for why it's $(TEST_DEPS) and not `test` itself).
   run make -n verify-results 2>&1
   assert_success
   assert_contains "$output" "installcheck"
@@ -319,21 +380,22 @@ EOF
   echo "$output" | grep -qE "^.M"
 }
 
-@test "make test shows diff with modified expected output" {
+@test "make test shows diff with modified expected output, and exits non-zero (issue #49)" {
   skip_if_no_postgres
 
-  # Run make test (should show diffs due to mismatch).
-  # Note: make test doesn't exit non-zero due to .IGNORE: installcheck.
   run make test
+  # Ensure make exited non-zero
+  assert_failure
 
+  # Confirms the pre-existing cat behavior wasn't lost while adding the exit.
   echo "$output" | grep -q "diff"
 }
 
 @test "make results is blocked by verify-results when tests fail" {
   skip_if_no_postgres
 
-  # The previous test's mismatch is still in place. verify-results depends
-  # on test, so its rerun of the suite fails again and blocks make results.
+  # The previous test's mismatch is still in place, so verify-results's
+  # rerun of $(TEST_DEPS) fails again and blocks make results.
   run make results
   assert_failure
   assert_contains "$output" "Cannot run 'make results'"
@@ -353,8 +415,8 @@ EOF
 }
 
 @test "verify-results can be disabled" {
-  # With verify-results disabled, results depends only on test, so its
-  # dry-run never mentions the verify-results block message. We check
+  # With verify-results disabled, results depends only on $(TEST_DEPS), so
+  # its dry-run never mentions the verify-results block message. We check
   # for the actual block message rather than the bare string
   # "verify-results", since that could spuriously match make's own
   # "Entering directory" banners depending on the environment's path.
