@@ -29,7 +29,7 @@
 #
 # All other tests depend on this foundation:
 # - Sequential tests (01-meta, 02-dist, 03-setup-final) build on this base
-# - Independent tests (doc, make-results) copy this base to their own environment
+# - Independent tests (doc, make-test) copy this base to their own environment
 #
 # The foundation is created once in .envs/foundation/ and then copied to other
 # test environments for speed. Run `make foundation` to rebuild from scratch.
