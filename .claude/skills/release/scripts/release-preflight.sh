@@ -94,33 +94,78 @@ echo "pgxntool-test: $pgxntool_test_branch"
 echo
 
 # 4. Fetch and check sync
+#
+# If local master is simply behind upstream (a clean fast-forward is
+# possible - local has no commits upstream lacks), self-heal: fast-forward
+# local master to upstream/master and push the result to the fork remote
+# (origin), rather than just warning and leaving it to the user. Genuine
+# divergence (local has commits upstream doesn't have) is NOT auto-merged
+# or force-pushed - that's left as a hard error requiring manual resolution,
+# since silently merging/rebasing here could be lossy.
+sync_repo() {
+    local repo_path="$1"
+    local repo_label="$2"
+    local upstream_remote="$3"
+    local branch="$4"
+
+    local local_head upstream_head
+    local_head=$(git -C "$repo_path" rev-parse HEAD)
+    upstream_head=$(git -C "$repo_path" rev-parse "$upstream_remote/master" 2>/dev/null || echo "unknown")
+
+    if [ "$local_head" = "$upstream_head" ]; then
+        echo "$repo_label: in sync with $upstream_remote/master ($local_head)"
+        return
+    fi
+
+    if [ "$branch" != "master" ]; then
+        echo "$repo_label: DIVERGED from $upstream_remote/master"
+        echo "  local:    $local_head"
+        echo "  upstream: $upstream_head"
+        echo "  not on master ('$branch') - skipping auto-sync"
+        errors+=("$repo_label: local master diverges from $upstream_remote/master and current branch is not master")
+        return
+    fi
+
+    # Is local a strict ancestor of upstream (i.e. purely behind, with
+    # nothing of its own ahead)? Guarded with if/else so a non-zero exit
+    # from --is-ancestor (the expected "not an ancestor" case) doesn't trip
+    # set -e.
+    if git -C "$repo_path" merge-base --is-ancestor "$local_head" "$upstream_head"; then
+        echo "$repo_label: BEHIND $upstream_remote/master - fast-forwarding"
+        echo "  local:    $local_head"
+        echo "  upstream: $upstream_head"
+        # NEVER use a plain merge here -- master must only ever fast-forward,
+        # never gain a merge commit. --ff-only makes git refuse (non-zero
+        # exit) instead of creating a merge commit if a true fast-forward
+        # somehow isn't possible (e.g. a race with a concurrent push landing
+        # between the ancestor check above and this merge). Guarded with
+        # if/else, not `set -e`, so that refusal is caught and reported as
+        # the same divergence error below -- never retried with a different
+        # strategy (rebase, plain merge, force-push) and never forced.
+        if git -C "$repo_path" merge --ff-only "$upstream_remote/master"; then
+            git -C "$repo_path" push origin master
+            echo "$repo_label: fast-forwarded master $local_head -> $upstream_head and pushed to origin"
+        else
+            echo "$repo_label: fast-forward merge unexpectedly failed"
+            errors+=("$repo_label: git merge --ff-only failed even though local was expected to be a strict ancestor of $upstream_remote/master - resolve manually")
+        fi
+    else
+        echo "$repo_label: DIVERGED from $upstream_remote/master (local has commits upstream lacks)"
+        echo "  local:    $local_head"
+        echo "  upstream: $upstream_head"
+        errors+=("$repo_label: local master has diverged from $upstream_remote/master (not a clean fast-forward) - resolve manually")
+    fi
+}
+
 echo "--- Sync Status ---"
 if [ -n "$PGXNTOOL_UPSTREAM" ]; then
     git -C "$PGXNTOOL_DIR" fetch "$PGXNTOOL_UPSTREAM" 2>/dev/null
-    local_head=$(git -C "$PGXNTOOL_DIR" rev-parse HEAD)
-    upstream_head=$(git -C "$PGXNTOOL_DIR" rev-parse "$PGXNTOOL_UPSTREAM/master" 2>/dev/null || echo "unknown")
-    if [ "$local_head" = "$upstream_head" ]; then
-        echo "pgxntool: in sync with $PGXNTOOL_UPSTREAM/master ($local_head)"
-    else
-        echo "pgxntool: DIVERGED from $PGXNTOOL_UPSTREAM/master"
-        echo "  local:    $local_head"
-        echo "  upstream: $upstream_head"
-        warnings+=("pgxntool: local master diverges from $PGXNTOOL_UPSTREAM/master")
-    fi
+    sync_repo "$PGXNTOOL_DIR" "pgxntool" "$PGXNTOOL_UPSTREAM" "$pgxntool_branch"
 fi
 
 if [ -n "$PGXNTOOL_TEST_UPSTREAM" ]; then
     git -C "$PGXNTOOL_TEST_DIR" fetch "$PGXNTOOL_TEST_UPSTREAM" 2>/dev/null
-    local_head=$(git -C "$PGXNTOOL_TEST_DIR" rev-parse HEAD)
-    upstream_head=$(git -C "$PGXNTOOL_TEST_DIR" rev-parse "$PGXNTOOL_TEST_UPSTREAM/master" 2>/dev/null || echo "unknown")
-    if [ "$local_head" = "$upstream_head" ]; then
-        echo "pgxntool-test: in sync with $PGXNTOOL_TEST_UPSTREAM/master ($local_head)"
-    else
-        echo "pgxntool-test: DIVERGED from $PGXNTOOL_TEST_UPSTREAM/master"
-        echo "  local:    $local_head"
-        echo "  upstream: $upstream_head"
-        warnings+=("pgxntool-test: local master diverges from $PGXNTOOL_TEST_UPSTREAM/master")
-    fi
+    sync_repo "$PGXNTOOL_TEST_DIR" "pgxntool-test" "$PGXNTOOL_TEST_UPSTREAM" "$pgxntool_test_branch"
 fi
 echo
 

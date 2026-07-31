@@ -109,11 +109,21 @@ The script checks:
 1. Upstream remotes exist (pointing to Postgres-Extensions)
 2. Both working directories are clean
 3. Both repos are on master
-4. Local master is in sync with upstream
+4. Local master is in sync with upstream — if local is simply behind (a
+   clean fast-forward), the script self-heals: it fast-forwards local
+   master to `upstream/master` (`git merge --ff-only`, never a plain merge
+   or rebase) and pushes the result to `origin` (the fork), no user
+   decision needed. Master is only ever updated by fast-forward — it must
+   never gain a merge commit. If a true fast-forward isn't possible for any
+   reason (including local having commits upstream lacks, or `--ff-only`
+   itself refusing), the script does not merge, rebase, or force anything;
+   it stops and reports a hard error requiring manual resolution.
 5. Version format is valid and tag doesn't already exist
 6. HISTORY.asc has a STABLE section
 
 **If the script exits with errors:** STOP and show the errors to the user.
+This includes genuine master divergence from check 4 — that must be
+resolved by hand, not auto-merged.
 
 **If there are warnings:** Show them and ask the user how to proceed.
 
@@ -182,6 +192,12 @@ time to finish while
 make any release-related change to git — until both sets of findings below
 have been retrieved and inspected.** See
 [Inspect API Documentation Review Findings](#inspect-api-documentation-review-findings).
+
+Before launching, read (and fold into each agent's prompt) the "User-Facing
+API Surface of pgxntool" section in `CLAUDE.md` — it records standing
+exceptions (e.g. `DEBUG` being intentionally undocumented) that must not be
+re-flagged as findings; don't duplicate that list here, just point agents at
+it.
 
 Launch two independent review efforts. Each may be one agent or a small set
 of agents if splitting the surface area (e.g. by file) makes sense; give
@@ -462,7 +478,10 @@ gh pr create --repo Postgres-Extensions/pgxntool-test \
 pgxntool release-VERSION branch -- pgxntool's own release PR is doc-only \
 and skips the Postgres test matrix entirely. It changes nothing in \
 pgxntool-test (empty commit) and must NOT be merged. Close it once its CI \
-is green."
+is green.
+
+Companion PR (should be merged normally once CI is green): \
+Postgres-Extensions/pgxntool#<pgxntool-pr-number>"
 ```
 
 ```bash
@@ -471,8 +490,24 @@ git push PGXNTOOL_UPSTREAM release-VERSION
 gh pr create --repo Postgres-Extensions/pgxntool \
   --base master --head release-VERSION \
   --title "Release VERSION" \
-  --body "Stamps HISTORY.asc for VERSION. Companion (do-not-merge, CI trigger only): pgxntool-test release-VERSION."
+  --body "Stamps HISTORY.asc for VERSION. This PR should be merged normally.
+
+Companion PR (must NOT be merged -- exists only to trigger a real CI test \
+run): Postgres-Extensions/pgxntool-test#<pgxntool-test-pr-number>"
 ```
+
+**Why the wording matters:** an earlier release's pgxntool PR body read
+"Companion (do-not-merge, CI trigger only): pgxntool-test release-VERSION"
+-- a single run-on sentence where the do-not-merge parenthetical, read out
+of context, could be misread as applying to the PR you're looking at
+instead of its companion. State plainly, as its own sentence, whether
+*this* PR should or shouldn't be merged before ever mentioning the other
+one. Backfill the actual PR numbers into `<pgxntool-pr-number>` /
+`<pgxntool-test-pr-number>` once both PRs exist (each is opened after the
+other in the commands above, so the second `gh pr create` can reference
+the first PR's already-known number; if opening both concurrently via
+parallel subagents, edit the missing cross-reference in with `gh pr edit
+--body` immediately after both numbers are known).
 
 Per this project's CI-monitoring rule, immediately start a background
 monitor for each push (exact SHA, not `--branch`, to avoid a race with any
