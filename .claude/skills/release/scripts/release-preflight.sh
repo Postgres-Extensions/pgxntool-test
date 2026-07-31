@@ -125,7 +125,10 @@ sync_repo() {
     local repo_label="$2"
     local slug output
 
-    slug=$(fork_slug "$repo_path")
+    if ! slug=$(fork_slug "$repo_path"); then
+        errors+=("$repo_label: could not determine fork slug from 'origin' remote URL")
+        return
+    fi
 
     echo "$repo_label: syncing local master from upstream (gh repo sync)..."
     if output=$(cd "$repo_path" && gh repo sync 2>&1); then
