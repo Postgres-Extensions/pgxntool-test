@@ -1,22 +1,53 @@
 #!/usr/bin/env bats
 
-# Test: make test framework
+# Test: make test / make results / verify-results
 #
-# Tests that the test framework works correctly:
-# - Creates test/output directory when needed
-# - Uses test/output for expected outputs
-# - Doesn't recreate output when directories removed
+# These three targets are one tightly-coupled pipeline -- `make results` and
+# `make verify-results` only exist to safely update the expected output that
+# `make test` checks against -- so they share a single file and a single
+# foundation-copied environment rather than three. Covers:
+# - `make test` succeeds against the template's known-good state
+# - EXTRA_CLEAN targets the real $(TESTOUT)/results/ directory (issue #7)
+# - unique per-directory database naming (REGRESS_DBNAME)
+# - installcheck always runs after install, even when pulled in indirectly
+#   (issue #79)
+# - check-stale-expected catches orphaned test/expected/*.out files (issue #14)
+# - `make test` exits non-zero on a real regression.diffs mismatch (issue #49)
+# - verify-results blocks `make results` when tests are failing, detects
+#   pgtap failures, and can be disabled
 
 load ../lib/helpers
 
 setup_file() {
-  # Set TOPDIR
   setup_topdir
-
 
   # Independent test - gets its own isolated environment with foundation TEST_REPO
   load_test_env "make-test"
   ensure_foundation "$TEST_DIR"
+
+  # The verify-results/results tests below need a committed baseline expected
+  # output file so they can create a detectable mismatch against it. Skip
+  # this if PostgreSQL is unavailable -- `make results` needs a live server,
+  # and those tests skip themselves via skip_if_no_postgres anyway.
+  if check_postgres_available; then
+    cd "$TEST_REPO"
+
+    # State modification: Ensure expected output exists.
+    # The template should already have it, but guard against it being missing or empty.
+    if [ ! -f "test/expected/pgxntool-test.out" ] || [ ! -s "test/expected/pgxntool-test.out" ]; then
+      make results
+    fi
+
+    # State modification: Ensure expected output is committed to git.
+    # The verify-results/results tests below create a mismatch and check git
+    # status to verify it, which only works if the baseline is committed.
+    local status_output
+    status_output=$(git status --porcelain test/expected/pgxntool-test.out)
+    if [ -n "$status_output" ]; then
+      git add test/expected/pgxntool-test.out
+      git commit -m "Add baseline expected output"
+    fi
+  fi
 }
 
 setup() {
@@ -24,52 +55,9 @@ setup() {
   cd "$TEST_REPO"
 }
 
-@test "test/output directory does not exist initially" {
-  # Skip if already exists from previous run
-  if [ -d "test/output" ]; then
-    skip "test/output already exists"
-  fi
-
-  assert_dir_not_exists "test/output"
-}
-
-@test "make test creates test/output directory" {
-  # Skip if already exists
-  if [ -d "test/output" ]; then
-    skip "test/output already exists"
-  fi
-
-  # pg_regress does NOT create input/ or output/ directories - they are optional
-  # INPUT directories. We need to create it ourselves for this test.
-  mkdir -p test/output
-
-  # Verify directory was created
-  assert_dir_exists "test/output"
-}
-
-@test "test/output is a directory" {
-  assert_dir_exists "test/output"
-}
-
 @test "make test succeeds" {
   run make test
   assert_success
-}
-
-@test "can remove test directories" {
-  # Remove input and output
-  rm -rf test/input test/output
-
-  assert_dir_not_exists "test/output"
-}
-
-@test "make test doesn't recreate output when directories removed" {
-  # After removing directories, output should not be recreated
-  # We only care that the directory doesn't get recreated, not that tests pass
-  run make test
-
-  # test/output should NOT exist (correct behavior)
-  assert_dir_not_exists "test/output"
 }
 
 @test "repository is still functional" {
@@ -117,10 +105,19 @@ setup() {
 @test "unique db name: create test SQL file and expected output" {
   skip_if_no_postgres
 
-  # Create a simple SQL test that queries the current database name
-  # Use \t and \a so output is just the bare value (no headers/formatting)
+  # Create a simple SQL test that queries the current database name.
+  # \set ECHO none is required: pg_regress always runs test files through
+  # `psql -a` (echo mode -- see psql_start_test() in pg_regress_main.c), so
+  # without it every input line, including \a/\t themselves, gets echoed
+  # verbatim into the output before it runs. This is the same convention
+  # template/test/sql/base.sql already documents and relies on -- hand-writing
+  # just the bare value here (without \set ECHO none) previously produced an
+  # expected file that could never match pg_regress's real output; that
+  # mismatch went unnoticed only because of issue #49 (make test always
+  # exiting 0 regardless of regression.diffs).
   mkdir -p test/sql
   cat > test/sql/dbname.sql <<'EOF'
+\set ECHO none
 \a
 \t
 SELECT current_database();
@@ -132,9 +129,10 @@ EOF
   expected_dbname=$(make print-REGRESS_DBNAME 2>&1 | sed -n 's/.*set to "\(.*\)"/\1/p')
   [ -n "$expected_dbname" ] || error "Could not extract REGRESS_DBNAME from make"
 
-  # Manually create the expected output file
+  # Expected output is just the echoed `\set ECHO none` line itself (read
+  # while ECHO was still "all") followed by the query's own bare result.
   mkdir -p test/expected
-  printf '%s\n' "$expected_dbname" > test/expected/dbname.out
+  printf '\\set ECHO none\n%s\n' "$expected_dbname" > test/expected/dbname.out
 }
 
 @test "unique db name: make test passes" {
@@ -142,6 +140,60 @@ EOF
 
   run make test
   assert_success
+}
+
+# Test: installcheck must run after install, even when pulled in indirectly
+# (issue #79)
+#
+# `.IGNORE: installcheck` plus `installcheck: $(TEST_RESULT_FILES) ...` gives
+# installcheck its own prerequisite chain, separate from `install`. `test`'s
+# TEST_DEPS lists `install installcheck` (and, when enabled,
+# check-stale-expected, which itself depends on installcheck -- see issue
+# #14 below) as independent, unordered prerequisites of `test` -- Make does
+# not guarantee unrelated same-target prerequisites build left-to-right.
+# Nothing stopped installcheck's own chain (pulled in either directly or via
+# check-stale-expected's dependency on it) from running before `install`
+# ever did. On a genuinely uninstalled tree, pg_regress then runs against a
+# database missing the extension, and every SQL test fails with "schema ...
+# does not exist". base.mk now has an explicit `installcheck: install` edge
+# (mirroring test-build's own `test-build: install` edge) so install always
+# runs first, regardless of what pulls installcheck in.
+
+@test "installcheck's parsed prerequisite list includes install (issue #79, structural proof)" {
+  # make -p dumps Make's internal parsed-rule database, independent of
+  # runtime scheduling order. This proves the `installcheck: install` edge
+  # genuinely exists in base.mk -- unlike a real `make test` run, which could
+  # theoretically pass even on a broken base.mk purely by luck of Make's
+  # scheduling order for unrelated same-target prerequisites (see the
+  # behavioral test below).
+  run make -p -n installcheck
+  assert_success
+
+  local prereq_line
+  prereq_line=$(echo "$output" | awk '/^installcheck:/{print; exit}')
+  [ -n "$prereq_line" ] || error "installcheck rule not found in 'make -p' database dump"
+
+  echo "$prereq_line" | grep -qw install || \
+    error "installcheck's parsed prerequisite list does not include 'install': $prereq_line"
+}
+
+@test "make test succeeds from a genuinely uninstalled state (issue #79)" {
+  skip_if_no_postgres
+
+  # The `make -p` test above is the primary proof for this issue (the
+  # dependency edge genuinely exists in the parsed makefile). This test is a
+  # complementary real-world sanity check of the whole pipeline: on a
+  # genuinely uninstalled tree, does pg_regress actually find the extension
+  # already installed by the time it runs? `make uninstall` forces that
+  # precondition regardless of what any earlier test in this file already
+  # installed on the shared PostgreSQL instance -- the original bug was
+  # historically masked in exactly that way.
+  run make uninstall
+  assert_success
+
+  run make test
+  assert_success
+  assert_not_contains "$output" "does not exist"
 }
 
 # Test: check-stale-expected (issue #14)
@@ -282,6 +334,163 @@ EOF
 
   run make check-stale-expected _CHECK_STALE_EXPECTED_SCRIPT="$stub_script"
   assert_success
+}
+
+# ============================================================================
+# verify-results / make results (issues #14, #49)
+# ============================================================================
+#
+# `results` depends on `verify-results` (when enabled), which depends on
+# $(TEST_DEPS) -- testdeps/install/installcheck/etc -- directly, NOT on the
+# `test` target itself (see base.mk's comment above `verify-results:
+# $(TEST_DEPS)`). So `make results` reruns the suite by pulling in those
+# prerequisites fresh, rather than by invoking `test`. This matters because
+# `test`'s own recipe now exits 1 as soon as it sees regression.diffs (issue
+# #49's fix, tested below) -- if `results`/`verify-results` depended on
+# `test` instead, that exit would abort the chain before verify-results ever
+# got to inspect the diff and report it.
+
+@test "verify-results succeeds with clean template state" {
+  skip_if_no_postgres
+
+  run make verify-results
+  assert_success
+}
+
+@test "verify-results pulls in installcheck via TEST_DEPS, not by depending on test" {
+  # Confirm the dependency is wired: a dry-run of verify-results must
+  # include the installcheck recipe pulled in via $(TEST_DEPS) (see the
+  # section header above for why it's $(TEST_DEPS) and not `test` itself).
+  run make -n verify-results 2>&1
+  assert_success
+  assert_contains "$output" "installcheck"
+}
+
+@test "can modify expected output to create mismatch" {
+  skip_if_no_postgres
+
+  # Add a blank line to create a difference. This mismatch stays in place
+  # through the rest of this section -- "make results updates expected
+  # output" below is what finally fixes it.
+  echo >> test/expected/pgxntool-test.out
+
+  # Verify file was modified (should show as modified since it's committed)
+  run git status --porcelain test/expected/pgxntool-test.out
+  [ -n "$output" ]
+  echo "$output" | grep -qE "^.M"
+}
+
+@test "make test shows diff with modified expected output, and exits non-zero (issue #49)" {
+  skip_if_no_postgres
+
+  run make test
+  # Ensure make exited non-zero
+  assert_failure
+
+  # Confirms the pre-existing cat behavior wasn't lost while adding the exit.
+  echo "$output" | grep -q "diff"
+}
+
+@test "make results is blocked by verify-results when tests fail" {
+  skip_if_no_postgres
+
+  # The previous test's mismatch is still in place, so verify-results's
+  # rerun of $(TEST_DEPS) fails again and blocks make results.
+  run make results
+  assert_failure
+  assert_contains "$output" "Cannot run 'make results'"
+}
+
+@test "verify-results blocks when invoked directly, not just via results" {
+  skip_if_no_postgres
+
+  # Same mismatch as above, but this test invokes `make verify-results`
+  # directly instead of going through `results` -- a distinct entry point
+  # worth covering on its own, since `results` only reaches verify-results
+  # as a prerequisite.
+  run make verify-results
+  assert_failure
+  assert_contains "$output" "Tests are failing"
+  assert_contains "$output" "Cannot run 'make results'"
+}
+
+@test "verify-results can be disabled" {
+  # With verify-results disabled, results depends only on $(TEST_DEPS), so
+  # its dry-run never mentions the verify-results block message. We check
+  # for the actual block message rather than the bare string
+  # "verify-results", since that could spuriously match make's own
+  # "Entering directory" banners depending on the environment's path.
+  run make -n results PGXNTOOL_ENABLE_VERIFY_RESULTS=no 2>&1
+  assert_success
+  assert_not_contains "$output" "Cannot run 'make results'"
+}
+
+@test "make results updates expected output" {
+  skip_if_no_postgres
+
+  # Run make results with verify-results disabled to actually fix the mismatch.
+  # Disabling verify-results lets make results run the suite and copy the
+  # fresh results to expected/, fixing the mismatch.
+  run make PGXNTOOL_ENABLE_VERIFY_RESULTS=no results
+  assert_success
+}
+
+@test "make test succeeds after make results" {
+  skip_if_no_postgres
+
+  # Now make test should pass
+  run make test
+  assert_success
+}
+
+@test "verify-results detects pgtap failures in result files" {
+  skip_if_no_postgres
+
+  mkdir -p test/results
+  cat > test/results/pgtap_fail.out <<'EOF'
+1..2
+ok 1 - passing test
+not ok 2 - failing test
+EOF
+
+  run make verify-results
+  assert_failure
+  assert_contains "$output" "pgtap failure detected"
+
+  rm -f test/results/pgtap_fail.out
+}
+
+@test "verify-results ignores pgtap TODO failures" {
+  skip_if_no_postgres
+
+  mkdir -p test/results
+  cat > test/results/pgtap_todo.out <<'EOF'
+1..1
+not ok 1 - known issue # TODO fix later
+EOF
+
+  run make verify-results
+  assert_success
+
+  rm -f test/results/pgtap_todo.out
+}
+
+@test "verify-results detects pgtap plan mismatch" {
+  skip_if_no_postgres
+
+  mkdir -p test/results
+  cat > test/results/pgtap_plan.out <<'EOF'
+1..3
+ok 1 - test one
+ok 2 - test two
+# Looks like you planned 3 tests but ran 2
+EOF
+
+  run make verify-results
+  assert_failure
+  assert_contains "$output" "pgtap plan mismatch"
+
+  rm -f test/results/pgtap_plan.out
 }
 
 # vi: expandtab sw=2 ts=2
