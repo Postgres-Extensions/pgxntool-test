@@ -49,12 +49,19 @@ When pushing to both repos, always pass the SHAs to avoid a race condition where
 
 ### 2. Read Results
 
-When the background task completes, read the output. Every PR push triggers
-**two** workflows in each repo — the real test matrix (`CI`) and an automated
-reviewer (`Claude Code Review`) — and the script waits for and reports on
-both by name, rather than picking whichever run for that commit happens to
-come back first (that ambiguity used to let it silently latch onto the wrong
-run — see "Known pitfalls" below). The script emits:
+When the background task completes, read the output. The script discovers
+**every** workflow run GitHub triggers for the pushed commit — currently the
+real test matrix (`CI`) and an automated reviewer (`Claude Code Review`) in
+each repo — and waits for and reports on all of them, rather than assuming
+there's exactly one relevant run and taking whichever one comes back first
+(that ambiguity used to let it silently latch onto the wrong run — see
+"Known pitfalls" below).
+
+This is default-include: if a new workflow starts firing on pushes in the
+future, the script picks it up and gates on it automatically, no code change
+needed. `EXCLUDE_WORKFLOWS` near the top of `monitor-ci.sh` is the escape
+hatch for a workflow that fires on a push but should never gate this check
+(empty by default). The script emits:
 
 ```text
 [pgxntool-test] Run 12345678 (CI) found
@@ -76,10 +83,10 @@ The **last line is always `OVERALL: <STATUS>`**. Check this first:
 
 | OVERALL | Exit code | Meaning |
 |---------|-----------|---------|
-| `ALL_PASS` | 0 | Every monitored run succeeded (or legitimately skipped) — safe to proceed |
+| `ALL_PASS` | 0 | Every discovered run succeeded (or legitimately skipped) — safe to proceed |
 | `FAIL` | 1 | One or more runs failed — stop and report |
 | `TIMEOUT` | 2 | Run(s) did not complete within timeout |
-| `NO_RUNS` | 3 | Not all expected runs (CI and Claude Code Review) were found for this branch/SHA after waiting |
+| `NO_RUNS` | 3 | No (non-excluded) workflow run was found for this branch/SHA after waiting |
 
 A `Claude Code Review` run concluding `SKIPPED` is normal, not a failure — it
 no-ops on draft PRs and on PRs from untrusted forks (see
@@ -108,16 +115,23 @@ branches don't match, cancel the run and re-trigger: `gh run cancel <id> --repo
 2. When pushing to both repos, start two background monitors simultaneously (one per repo)
 3. Pass the exact push SHA when available — `--branch` has a race condition on rapid pushes
 4. The `=== BRANCHES ===` line in the output confirms which code is under test — always verify it matches your intent
-5. A PR is only green once **both** `CI` and `Claude Code Review` have completed for that SHA — don't treat `OVERALL: ALL_PASS` from an old, partial run as sufficient
+5. A PR is only green once **every** workflow run triggered for that SHA has completed — don't treat `OVERALL: ALL_PASS` from an old, partial run as sufficient
 
 ## Known pitfalls
 
-`gh run list --commit SHA` with no `--workflow` filter returns every workflow
-run tied to that commit, in an order that isn't guaranteed to put the real CI
-run first. Since `CI` (event `pull_request`) and `Claude Code Review` (event
-`pull_request_target`) both trigger on the same push, an unfiltered lookup
-could silently grab the review run and report on it as if it were the test
-matrix — the `=== BRANCHES ===` line would then never appear at all, because
-only `CI`'s jobs emit it. The script avoids this by looking up each workflow
-by exact name (`-w/--workflow`) instead of taking `.[0]` of an unfiltered
-list.
+`gh run list --commit SHA` with no filter returns every workflow run tied to
+that commit, in an order that isn't guaranteed to put the real CI run first.
+Since `CI` (event `pull_request`) and `Claude Code Review` (event
+`pull_request_target`) both trigger on the same push, taking `.[0]` of that
+unfiltered list used to be able to silently grab the review run and report
+on it as if it were the test matrix — the `=== BRANCHES ===` line would then
+never appear at all, because only `CI`'s jobs emit it. The script avoids this
+by discovering the full set of runs tied to the commit (settling briefly so
+sibling runs GitHub hasn't indexed yet are caught) and monitoring all of them
+to completion, rather than assuming there is exactly one relevant run.
+
+`gh run list --jq` only accepts a plain jq expression string — it does not
+pass through extra jq flags like `--argjson`. Passing `--argjson` to `gh run
+list` itself fails with "unknown command", so the exclude-list filter is
+applied by piping `gh`'s raw `--json` output into a separate real `jq`
+invocation instead.
