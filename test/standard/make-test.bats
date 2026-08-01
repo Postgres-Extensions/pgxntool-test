@@ -269,7 +269,7 @@ EOF
   # script must never even be invoked, not merely have a failure from it
   # ignored. That's a materially stronger claim than "make test succeeds
   # despite a stale file", so prove it directly: point
-  # _CHECK_STALE_EXPECTED_SCRIPT -- the one variable the
+  # _PGXNTOOL_CHECK_STALE_EXPECTED_SCRIPT -- the one variable the
   # check-stale-expected recipe actually invokes (see base.mk) -- at a stub
   # that only touches a marker file and fails. No need to fake out
   # PGXNTOOL_DIR itself, since this variable is the sole thing standing
@@ -281,7 +281,7 @@ EOF
   local stub_script
   stub_script=$(make_stub_script check-stale-expected-stub 1 "" "$marker")
 
-  run make test PGXNTOOL_ENABLE_CHECK_STALE_EXPECTED=no _CHECK_STALE_EXPECTED_SCRIPT="$stub_script"
+  run make test PGXNTOOL_ENABLE_CHECK_STALE_EXPECTED=no _PGXNTOOL_CHECK_STALE_EXPECTED_SCRIPT="$stub_script"
   assert_success
   assert_file_not_exists "$marker"
 }
@@ -315,7 +315,7 @@ EOF
   # base.mk's responsibility, not the script's decision logic (the real
   # script's distinct exit codes and messages are already covered directly
   # in check-stale-expected-script.bats): does `make check-stale-expected`
-  # correctly surface whatever _CHECK_STALE_EXPECTED_SCRIPT does? A
+  # correctly surface whatever _PGXNTOOL_CHECK_STALE_EXPECTED_SCRIPT does? A
   # stub that deterministically prints a message and exits nonzero must
   # make the target (and `make`'s own recipe-failure handling) fail and
   # show that message; a stub that exits 0 must let it pass -- regardless
@@ -323,13 +323,13 @@ EOF
   local stub_script
   stub_script=$(make_stub_script fail-stub 5 "STUB SENTINEL MESSAGE")
 
-  run make check-stale-expected _CHECK_STALE_EXPECTED_SCRIPT="$stub_script"
+  run make check-stale-expected _PGXNTOOL_CHECK_STALE_EXPECTED_SCRIPT="$stub_script"
   assert_failure
   assert_contains "$output" "STUB SENTINEL MESSAGE"
 
   stub_script=$(make_stub_script pass-stub 0)
 
-  run make check-stale-expected _CHECK_STALE_EXPECTED_SCRIPT="$stub_script"
+  run make check-stale-expected _PGXNTOOL_CHECK_STALE_EXPECTED_SCRIPT="$stub_script"
   assert_success
 }
 
