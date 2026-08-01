@@ -248,6 +248,71 @@ teardown_file() {
   [ "$mtime2" -gt "$mtime1" ]
 }
 
+@test "pgtle: make print-pgtle PGXNTOOL_PGTLE_TARGET_VERSION=X prints the matching directory's SQL exactly (issue #21)" {
+  # print-pgtle's own Makefile wiring must forward
+  # PGXNTOOL_PGTLE_TARGET_VERSION to pgtle.sh --get-dir and print that
+  # directory's file verbatim. get_version_dir's own decision logic (which
+  # directory a version maps to) is already covered by the
+  # call_pgtle_function unit tests below; this only proves print-pgtle
+  # wires the version through and prints the right content.
+  # --separate-stderr: pgtle.sh's own progress messages (from the 'pgtle'
+  # prerequisite target) go to stderr, so the default merged-output mode
+  # would pollute $output with them ahead of the actual SQL content.
+  # --no-print-directory: this test suite itself runs under an outer
+  # recursive `make test-all`, which makes MAKEFLAGS carry a marker that
+  # causes GNU Make to auto-print "Entering directory"/"Leaving directory"
+  # to stdout for any nested make invocation (see the dedicated regression
+  # test below). Required here for the same reason real callers need it.
+  run --separate-stderr make --no-print-directory print-pgtle PGXNTOOL_PGTLE_TARGET_VERSION=1.5.2
+  assert_success
+
+  printf '%s\n' "$output" > "$BATS_TEST_TMPDIR/print-pgtle-1.5.2.out"
+  run diff "$BATS_TEST_TMPDIR/print-pgtle-1.5.2.out" "pg_tle/1.5.0+/pgxntool-test.sql"
+  assert_success
+}
+
+@test "pgtle: make print-pgtle with an older PGXNTOOL_PGTLE_TARGET_VERSION selects the older range directory" {
+  # --separate-stderr / --no-print-directory: see comment in the test above.
+  run --separate-stderr make --no-print-directory print-pgtle PGXNTOOL_PGTLE_TARGET_VERSION=1.4.2
+  assert_success
+
+  printf '%s\n' "$output" > "$BATS_TEST_TMPDIR/print-pgtle-1.4.2.out"
+  run diff "$BATS_TEST_TMPDIR/print-pgtle-1.4.2.out" "pg_tle/1.4.0-1.5.0/pgxntool-test.sql"
+  assert_success
+}
+
+@test "pgtle: print-pgtle output is polluted by 'Entering/Leaving directory' without --no-print-directory when invoked recursively (issue #21)" {
+  # Regression test for a real footgun found while writing the tests above:
+  # GNU Make auto-prints "Entering directory"/"Leaving directory" to stdout
+  # for recursive invocations (MAKEFLAGS carrying a recursion marker, as
+  # happens whenever the caller is itself already inside a make recipe --
+  # exactly the documented `$(MAKE) -C ../deps/cat_tools print-pgtle` use
+  # case). This corrupts a redirected combined SQL file with garbage lines
+  # unless --no-print-directory is passed. Simulate that recursive-caller
+  # environment directly (MAKEFLAGS="w --") rather than relying on this
+  # suite's own outer `make test-all` wrapper, so the test is meaningful
+  # even when this file runs standalone (bats invoked directly, no wrapper).
+  MAKEFLAGS="w --" run --separate-stderr make print-pgtle PGXNTOOL_PGTLE_TARGET_VERSION=1.5.2
+  assert_success
+  assert_contains "$output" "Entering directory"
+
+  MAKEFLAGS="w --" run --separate-stderr make --no-print-directory print-pgtle PGXNTOOL_PGTLE_TARGET_VERSION=1.5.2
+  assert_success
+  ! echo "$output" | grep -q "Entering directory"
+}
+
+@test "pgtle: env var PGTLE_VERSION does not set PGXNTOOL_PGTLE_TARGET_VERSION" {
+  # Mirrors the issue #78 collision test above, but for the new
+  # PGXNTOOL_PGTLE_TARGET_VERSION variable print-pgtle reads. A bare
+  # PGTLE_VERSION env var (used elsewhere for "which pg_tle to test
+  # against") must not leak into make's similarly-named variable.
+  # Uses the print-% debug target directly rather than invoking
+  # print-pgtle for real, since only the variable's value is at stake here.
+  PGTLE_VERSION=1.5.2 run make print-PGXNTOOL_PGTLE_TARGET_VERSION
+  assert_success
+  assert_not_contains "$output" "1.5.2"
+}
+
 @test "pgtle: error on missing control file" {
   run "$TEST_REPO/pgxntool/pgtle.sh" --extension nonexistent --pgtle-version 1.5.0+
   assert_failure
