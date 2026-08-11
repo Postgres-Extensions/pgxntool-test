@@ -70,6 +70,7 @@ pgxntool/bin/
 pgxntool/bin/version
 pgxntool/base.mk
 pgxntool/build_meta.sh
+pgxntool/bump-default-version.sh
 pgxntool/JSON.sh
 pgxntool/JSON.sh.LICENSE
 pgxntool/LICENSE
