@@ -11,6 +11,10 @@
 # - unique per-directory database naming (REGRESS_DBNAME)
 # - installcheck always runs after install, even when pulled in indirectly
 #   (issue #79)
+# - PGXNTOOL_ENABLE_FS_INSTALL can disable the install prerequisite entirely,
+#   for "existing mode"/pg_tle-style testing (issues #55, #90)
+# - PGXNTOOL_ENABLE_PGXN_INSTALL can independently disable the pgtap
+#   dependency's own `pgxn install --sudo` auto-install
 # - check-stale-expected catches orphaned test/expected/*.out files (issue #14)
 # - `make test` exits non-zero on a real regression.diffs mismatch (issue #49)
 # - verify-results blocks `make results` when tests are failing, detects
@@ -170,7 +174,10 @@ EOF
   prereq_line=$(echo "$output" | awk '/^installcheck:/{print; exit}')
   [ -n "$prereq_line" ] || error "installcheck rule not found in 'make -p' database dump"
 
-  echo "$prereq_line" | grep -qw install || \
+  # Split on whitespace and match the exact "install" token -- grep -w alone
+  # would also match inside "test/install/schedule" (PGXNTOOL_ENABLE_TEST_INSTALL's
+  # generated schedule file path), which is word-bounded by slashes too.
+  echo "$prereq_line" | tr ' ' '\n' | grep -qx install || \
     error "installcheck's parsed prerequisite list does not include 'install': $prereq_line"
 }
 
@@ -191,6 +198,137 @@ EOF
   run make test
   assert_success
   assert_not_contains "$output" "does not exist"
+}
+
+# ============================================================================
+# install/installcheck can skip filesystem install (issues #55, #90)
+# ============================================================================
+#
+# `test`/`verify-results` always filesystem-installed the extension via
+# PGXS's `install`, and `installcheck` always depended on `install` (the
+# issue #79 fix, tested above) -- with no way to disable either. That defeats
+# "existing mode" testing, where the extension under test was deployed some
+# other way (e.g. a pg_tle registration, or a real pg_upgrade) and the whole
+# point is to prove that other deployment path works -- filesystem-installing
+# as a side effect defeats it. PGXNTOOL_ENABLE_FS_INSTALL=no removes both the
+# TEST_DEPS `install` entry and the `installcheck: install` edge.
+
+@test "PGXNTOOL_ENABLE_FS_INSTALL=no removes install from installcheck's parsed prerequisite list" {
+  # Same structural technique as the issue #79 test above, inverted: prove
+  # the edge is genuinely gone, not just that a real run happened to succeed
+  # regardless of scheduling order.
+  run make -p -n installcheck PGXNTOOL_ENABLE_FS_INSTALL=no
+  assert_success
+
+  local prereq_line
+  prereq_line=$(echo "$output" | awk '/^installcheck:/{print; exit}')
+  [ -n "$prereq_line" ] || error "installcheck rule not found in 'make -p' database dump"
+
+  # Split on whitespace and match the exact "install" token -- grep -w would
+  # false-positive on the unrelated "test/install/schedule" path (PGXNTOOL_ENABLE_TEST_INSTALL's
+  # generated schedule file), which is also a word-bounded "install" once
+  # surrounded by slashes.
+  if echo "$prereq_line" | tr ' ' '\n' | grep -qx install; then
+    error "installcheck's parsed prerequisite list still includes 'install' with PGXNTOOL_ENABLE_FS_INSTALL=no: $prereq_line"
+  fi
+}
+
+@test "PGXNTOOL_ENABLE_FS_INSTALL=no removes install's recipe from make test's dry run" {
+  run make -n test PGXNTOOL_ENABLE_FS_INSTALL=no
+  assert_success
+  assert_not_contains "$output" "install -c -m 644"
+}
+
+@test "PGXNTOOL_ENABLE_FS_INSTALL rejects invalid values" {
+  run make print-PGXNTOOL_ENABLE_FS_INSTALL PGXNTOOL_ENABLE_FS_INSTALL=bogus
+  assert_failure
+  assert_contains "$output" "PGXNTOOL_ENABLE_FS_INSTALL must be"
+}
+
+@test "make test succeeds with PGXNTOOL_ENABLE_FS_INSTALL=no when the extension is already installed" {
+  skip_if_no_postgres
+
+  # Stands in for "existing mode": the extension is already deployed (here,
+  # via a normal install) before test/installcheck ever runs, so disabling
+  # the FS install prerequisite shouldn't stop the suite from passing.
+  run make install
+  assert_success
+
+  run make test PGXNTOOL_ENABLE_FS_INSTALL=no
+  assert_success
+}
+
+@test "make test fails with PGXNTOOL_ENABLE_FS_INSTALL=no against a genuinely uninstalled tree" {
+  skip_if_no_postgres
+
+  # Inverse of the issue #79 test above: with filesystem install disabled,
+  # pg_regress must run against whatever's already there -- on a genuinely
+  # uninstalled tree that means failure, which is the real-world proof that
+  # `install` genuinely didn't run as a side effect (the structural test
+  # above already proves the edge itself is gone; this proves it matters).
+  run make uninstall
+  assert_success
+
+  run make test PGXNTOOL_ENABLE_FS_INSTALL=no
+  assert_failure
+  assert_contains "$output" "does not exist"
+
+  # Restore installed state for the rest of this file's tests.
+  run make install
+  assert_success
+}
+
+# ----------------------------------------------------------------------------
+# pgtap auto-install can be disabled independently (PGXNTOOL_ENABLE_PGXN_INSTALL)
+# ----------------------------------------------------------------------------
+#
+# `installcheck` also auto-installs the pgtap dependency via `pgxn install
+# pgtap --sudo` when it isn't already filesystem-installed -- itself a
+# filesystem-install side effect, and the same problem
+# PGXNTOOL_ENABLE_FS_INSTALL solves for the extension under test.
+# PGXNTOOL_ENABLE_PGXN_INSTALL defaults to following PGXNTOOL_ENABLE_FS_INSTALL,
+# but can be set independently.
+
+@test "PGXNTOOL_ENABLE_PGXN_INSTALL defaults to following PGXNTOOL_ENABLE_FS_INSTALL" {
+  run make print-PGXNTOOL_ENABLE_PGXN_INSTALL
+  assert_success
+  assert_contains "$output" 'set to "yes"'
+
+  run make print-PGXNTOOL_ENABLE_PGXN_INSTALL PGXNTOOL_ENABLE_FS_INSTALL=no
+  assert_success
+  assert_contains "$output" 'set to "no"'
+}
+
+@test "PGXNTOOL_ENABLE_PGXN_INSTALL can be set independently of PGXNTOOL_ENABLE_FS_INSTALL" {
+  run make print-PGXNTOOL_ENABLE_PGXN_INSTALL PGXNTOOL_ENABLE_FS_INSTALL=no PGXNTOOL_ENABLE_PGXN_INSTALL=yes
+  assert_success
+  assert_contains "$output" 'set to "yes"'
+}
+
+@test "PGXNTOOL_ENABLE_PGXN_INSTALL=no removes pgtap's recipe from a dry-run installcheck" {
+  # pgtap's file-check target ($(DESTDIR)$(datadir)/extension/pgtap.control)
+  # is already satisfied on this machine (pgtap is genuinely installed), so
+  # a plain dry-run never shows the "pgxn install" recipe regardless of this
+  # variable -- it wouldn't prove anything either way. Pointing DESTDIR at a
+  # nonexistent path makes that file-check target genuinely unsatisfied,
+  # forcing the recipe to appear in a *dry* run (nothing is actually
+  # installed there -- -n never executes it) -- that's what actually proves
+  # PGXNTOOL_ENABLE_PGXN_INSTALL gates it.
+  local fake_destdir="$BATS_TEST_TMPDIR/fake-destdir"
+
+  run make -n installcheck "DESTDIR=$fake_destdir"
+  assert_success
+  assert_contains "$output" "pgxn install pgtap --sudo"
+
+  run make -n installcheck "DESTDIR=$fake_destdir" PGXNTOOL_ENABLE_PGXN_INSTALL=no
+  assert_success
+  assert_not_contains "$output" "pgxn install pgtap --sudo"
+}
+
+@test "PGXNTOOL_ENABLE_PGXN_INSTALL rejects invalid values" {
+  run make print-PGXNTOOL_ENABLE_PGXN_INSTALL PGXNTOOL_ENABLE_PGXN_INSTALL=bogus
+  assert_failure
+  assert_contains "$output" "PGXNTOOL_ENABLE_PGXN_INSTALL must be"
 }
 
 # Test: check-stale-expected (issue #14)
