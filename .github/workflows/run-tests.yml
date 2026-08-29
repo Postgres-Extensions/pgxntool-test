@@ -54,7 +54,7 @@ jobs:
           echo "=== BRANCHES: pgxntool=${PGXNTOOL_OWNER}/${PGXNTOOL_BRANCH} pgxntool-test=${PGXNTOOL_TEST_OWNER}/${PGXNTOOL_TEST_REF} ==="
 
       - name: Check out pgxntool-test
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           persist-credentials: false
           repository: ${{ inputs.pgxntool-test-owner || github.repository_owner }}/pgxntool-test
@@ -68,7 +68,7 @@ jobs:
           submodules: recursive
 
       - name: Check out pgxntool
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           persist-credentials: false
           repository: ${{ inputs.pgxntool-owner || github.repository_owner }}/pgxntool
