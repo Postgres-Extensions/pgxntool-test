@@ -2,35 +2,33 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+See [`../ai/CLAUDE.md`](../ai/CLAUDE.md) (or
+https://github.com/Postgres-Extensions/ai/blob/main/CLAUDE.md if that path
+doesn't exist locally — clone it to `../ai/` per its own first instruction)
+and `../ai/PR.md` for cross-repo conventions not restated below (CI
+monitoring's general principle, multi-session PR-ownership hygiene,
+branch-sync-before-branching, executable-bit safety, shell script
+standards, etc.). This repo pairs with **../pgxntool/**, so several
+sections below are genuine, deliberate exceptions to those general
+conventions — noted where that's the case.
+
 ## CI Monitoring After Every Push
 
-**REQUIRED**: After every `git push`, immediately start a background task to
-monitor the CI run for that push. If you pushed to both pgxntool and
-pgxntool-test, start a background task for each repo — do not monitor them
-sequentially.
+Two additions specific to this paired repo, on top of the general
+convention in `../ai/CLAUDE.md`:
 
-Always use the `/ci` skill (`bash .claude/skills/ci/scripts/monitor-ci.sh`).
-Pass the exact push SHA when available — `gh run list --branch` has a race
-condition: if two pushes land close together on the same branch (e.g., two
-Claude sessions pushing in parallel), `--branch` may pick up the wrong run.
-`--commit SHA` targets the exact push and avoids this.
-
-**After every monitor run, check the `=== BRANCHES: pgxntool=X
-pgxntool-test=Y ===` line** to verify the right code is under test. If the
-branches don't match what you pushed, cancel the run and re-trigger.
-
-## Multiple Concurrent Sessions
-
-It is common to have multiple Claude Code sessions open simultaneously across
-pgxntool and pgxntool-test. To avoid cross-session interference:
-
-**If you are asked to do something on an existing PR that you did not open or
-are not already working on in this session, immediately ask for confirmation
-before proceeding.** For example: "I see PR #21 exists. Were you asking me to
-work on that, or did you mean to send this to a different session?"
-
-This applies to: editing PR branches, pushing to them, closing/reopening them,
-adding commits, modifying PR descriptions, or any other PR-level action.
+- If you pushed to both pgxntool and pgxntool-test, start a background task
+  for each repo — do not monitor them sequentially.
+- Always use the `/ci` skill (`bash .claude/skills/ci/scripts/monitor-ci.sh`)
+  rather than raw `gh run`/`gh pr checks` calls — it derives the owner from
+  the current repo and monitors both. Pass the exact push SHA when
+  available — `gh run list --branch` has a race condition: if two pushes
+  land close together on the same branch (e.g., two Claude sessions pushing
+  in parallel), `--branch` may pick up the wrong run. `--commit SHA` targets
+  the exact push and avoids this.
+- **After every monitor run, check the `=== BRANCHES: pgxntool=X
+  pgxntool-test=Y ===` line** to verify the right code is under test. If the
+  branches don't match what you pushed, cancel the run and re-trigger.
 
 ## GitHub Issues: Repo Routing
 
@@ -49,38 +47,13 @@ lose track of which repo an issue landed in. When opening an issue:
    body (e.g. a leading `**Repo: pgxntool**` or `**Repo: pgxntool-test**`
    line).
 
-## Check Master Sync Before Branching
-
-**Before creating a new branch or worktree** in either repo, fetch the
-upstream remote and confirm local master isn't behind it — don't just check
-`git status`/branch name, actually compare the SHAs:
-
-```bash
-git fetch upstream master --quiet
-git rev-parse master upstream/master  # compare the two SHAs
-```
-
-If local master is behind, sync it before branching off it — don't branch
-from a stale base. Branching from a stale master risks redoing work that's
-already been fixed upstream.
-
-This is separate from (and broader than) the `/release` skill's own
-pre-flight sync check (Step 1) — that one only runs right before a release;
-this applies to *any* new branch or worktree in either repo.
-
 ## Git Commit Guidelines
 
-**CRITICAL**: Never attempt to commit changes on your own initiative. Always wait for explicit user instruction to commit. Even if you detect issues (like out-of-date files), inform the user and let them decide when to commit.
-
-**IMPORTANT**: When creating commit messages, do not attribute commits to yourself (Claude). Commit messages should reflect the work being done without AI attribution in the message body. The standard Co-Authored-By trailer is acceptable.
-
-## Maintainer-Gated Labels
-
-**NEVER apply or remove the `commit-with-no-tests` label (or any similarly maintainer-gated label) on pgxntool PRs, even if the authenticated account has admin/write access that makes it technically possible.** `protect-label.yml` restricts this label to maintainers by design — having the technical ability to set it does not make it your call. If a PR looks like it genuinely needs no paired test PR, say so explicitly and let a human apply the label.
-
-## Executable Bit Safety
-
-`sed -i` (and similar in-place file-rewriting tools) can silently drop a file's executable bit -- this has caused real regressions in this repo (a script losing its `+x` bit cascaded into a wide swath of unrelated-looking test failures before the actual cause was found). After using `sed -i` or similar on any file, check `git diff --summary` for a `100755 => 100644` mode change and restore `chmod +x` before doing anything else with it.
+**CRITICAL, and a deliberate exception to `../ai/PR.md`'s general
+workflow**: Never attempt to commit changes on your own initiative in
+this repo pairing. Always wait for explicit user instruction to commit.
+Even if you detect issues (like out-of-date files), inform the user and
+let them decide when to commit.
 
 ## PR-Based Workflow: Merges Happen Outside AI Control
 
@@ -282,7 +255,7 @@ Quick reference: `/test` runs `test-all`. `/test test/standard/doc.bats` runs on
 
 **CRITICAL**: Tests CANNOT run in parallel. Never start a test run while another is in progress, even in background. The test skill enforces this with a lock file.
 
-**CRITICAL**: Test failures are NEVER acceptable. Any test failure - whether from a smoke test, verification run, or full suite - must be reported to the user immediately. Never rationalize failures as "pre-existing", "expected on this branch", or "unrelated." If failures exist, work with the user to fix them or plan commit order to avoid them.
+**CRITICAL**: Test failures are never acceptable here either — see `../ai/CLAUDE.md`.
 
 ### State Modifications vs Tests
 
@@ -317,7 +290,9 @@ default_version = '2.5.0' # DO NOT REMOVE: trailing comment exercises parse_cont
 
 ### Test Each Layer for What It Actually Owns, Not What Another Layer Already Covers
 
-**General rule**: don't re-test behavior that's already established and owned somewhere else -- an underlying framework/dependency's own documented mechanics, or a different layer of pgxntool's own code. Only test that *pgxntool's own code* correctly wires into, configures, or triggers that other layer. This applies whether the "other layer" is a script pgxntool invokes, or an external build framework (PGXS) pgxntool builds on top of.
+See `../ai/CLAUDE.md`'s Testability section for the general rule. Applied
+here — this applies whether the "other layer" is a script pgxntool
+invokes, or an external build framework (PGXS) pgxntool builds on top of:
 
 - **A script's own decision logic** (parsing, comparisons, what makes it succeed or fail) belongs in a test file that invokes the script directly -- no Make, no foundation environment, no Postgres. Exhaustive edge-case coverage belongs here, since it's cheap here.
 - **An external framework's own established behavior** (e.g. PGXS's `clean`/`EXTRA_CLEAN` deletion mechanics) is that framework's responsibility, not pgxntool's to re-verify. What pgxntool IS responsible for is correctly *populating* the configuration PGXS consumes (e.g. `EXTRA_CLEAN` containing the right entry) and that the configuration genuinely *reaches* the mechanism it's supposed to configure (e.g. that entry actually appearing in the real `clean` recipe, not just in an isolated variable dump) -- not that PGXS then does the right thing with it, which is PGXS's own well-established behavior.
@@ -331,9 +306,7 @@ Concrete example 2 -- `EXTRA_CLEAN`/PGXS (`test/standard/make-test.bats`): `make
 
 #### Proving a Script Was/Wasn't Invoked (or That Its Result Was Propagated Correctly)
 
-When a Makefile-layer test needs to prove a script genuinely was (or wasn't) called, or that its exit status/output was correctly bubbled up -- not just that a failure from it was tolerated, which is a materially weaker claim -- prefer a dedicated "which script path to run" make variable over faking out an entire directory tree, and stub the script rather than relying on its real behavior.
-
-Concrete example: the `check-stale-expected` recipe in `../pgxntool/base.mk` invokes `$(_CHECK_STALE_EXPECTED_SCRIPT)` (default `$(PGXNTOOL_DIR)/test/bin/check-stale-expected.sh`) instead of a hardcoded path. `make_stub_script` in `test/lib/helpers.bash` writes a throwaway stub (configurable exit code, stdout text, marker file) to prove either that the script was never invoked (`PGXNTOOL_ENABLE_CHECK_STALE_EXPECTED=no` test) or that `make` correctly propagates the script's exit status/output (the dedicated propagation test) -- both in `test/standard/make-test.bats`, both pointing `_CHECK_STALE_EXPECTED_SCRIPT` at the stub instead of touching `PGXNTOOL_DIR`.
+See `../ai/CLAUDE.md`'s Testability section for the general stub-vs-directory-fake guidance. Concrete example: the `check-stale-expected` recipe in `../pgxntool/base.mk` invokes `$(_CHECK_STALE_EXPECTED_SCRIPT)` (default `$(PGXNTOOL_DIR)/test/bin/check-stale-expected.sh`) instead of a hardcoded path. `make_stub_script` in `test/lib/helpers.bash` writes a throwaway stub (configurable exit code, stdout text, marker file) to prove either that the script was never invoked (`PGXNTOOL_ENABLE_CHECK_STALE_EXPECTED=no` test) or that `make` correctly propagates the script's exit status/output (the dedicated propagation test) -- both in `test/standard/make-test.bats`, both pointing `_CHECK_STALE_EXPECTED_SCRIPT` at the stub instead of touching `PGXNTOOL_DIR`.
 
 This is deliberately narrower than overriding `PGXNTOOL_DIR` itself. `PGXNTOOL_DIR` is read by many unrelated targets (`META.json`, `control.mk`, `verify-results`, `pgtle.sh`, etc.), so faking it out wholesale to intercept one script would require a full copy of the real directory just to swap that one file -- expensive, and it defeats the purpose of the narrower variable. Reach for "add a dedicated variable, then stub just that seam" before reaching for a directory-level fake or an in-place edit of a live, shared checkout (e.g. temporarily `mv`-ing the real script aside).
 
@@ -371,16 +344,8 @@ pgxntool-test/
 
 **Why**: Tests leverage the template's known-good state to validate features. If the template starts broken, tests need extra setup commands to establish a working baseline, which makes tests slower and harder to understand.
 
-## Shell Script Standards
-
-**RULE**: Always use `#!/usr/bin/env bash`, never `#!/bin/bash`.
-
-`/bin/bash` hardcodes the path and fails on systems where bash is elsewhere (some BSDs, NixOS, Homebrew on macOS). `#!/usr/bin/env bash` finds bash on `PATH` and works everywhere.
-
 ## General Guidelines
 
 - You should never have to run `rm -rf .envs`; the test system should always know how to handle .envs
 - Do not hard code things that can be determined in other ways. For example, if we need to do something to a subset of files, look for ways to list the files that meet the specification
-- When documenting things avoid referring to the past, unless it's a major change. People generally don't need to know about what *was*, they only care about what we have now
-- NEVER use `echo ""` to print a blank line; just use `echo` with no arguments
 - Minimize commands in the test suite. Every `make` invocation and shell command slows down tests. Prefer `make -n` (dry-run) over full `make` when you only need to check target existence or dependencies. Combine related checks into single tests where natural. When multiple tests need the same state change (e.g., removing a directory), order them so the change happens once and subsequent tests ride on that state — don't remove/restore/remove again
