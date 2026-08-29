@@ -247,7 +247,14 @@ section once resolved.
    a behavior change, call it out in `HISTORY.asc` too. (For other files
    that are genuinely just internal dev documentation with no bearing on
    consumer projects, doc-only changes don't need a `HISTORY.asc` entry.)
-7. Everything else is internal by default unless there's a specific
+7. **`../pgxntool/POSTGRES-NOTES.asc` and `../pgxntool/CLAUDE-POSTGRES.md`
+   ship to consumers too, so review them for accuracy — but they never
+   generate `HISTORY.asc` entries.** They deliberately hold only guidance
+   about PostgreSQL itself, not about pgxntool, so nothing in them can
+   describe a pgxntool behavior change. If a claim in either one turns out
+   to be about pgxntool after all, that's the finding: it belongs in
+   `README.asc`/`CLAUDE.md` instead.
+8. Everything else is internal by default unless there's a specific
    indication otherwise.
 
 ## Running Skills and Scripts
