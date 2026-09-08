@@ -184,11 +184,21 @@ EOF
 @test "make test fails with PGXNTOOL_ENABLE_FS_INSTALL=no, but succeeds by default, from a genuinely uninstalled tree (issues #55, #79)" {
   skip_if_no_postgres
 
-  # Shares one `make uninstall` for issue #79's original regression check
-  # and issue #55's proof that install doesn't happen as a side effect
-  # (below), instead of each uninstalling separately.
+  # Shares one `make uninstall` for issue #79's original regression check,
+  # issue #55's proof that install doesn't happen as a side effect (below),
+  # and the dry-run recipe check further below, instead of each uninstalling
+  # separately.
   run make uninstall
   assert_success
+
+  # `install` is declared .PHONY (via PGXS's Makefile.global, pulled in by
+  # pgxs.mk's include chain), so its recipe would show in a dry run whenever
+  # it remains a prerequisite regardless of what's on disk -- checking this
+  # against a genuinely uninstalled tree (the uninstall above) means the
+  # result can't be dismissed as coincidental with on-disk state either way.
+  run make -n test PGXNTOOL_ENABLE_FS_INSTALL=no
+  assert_success
+  assert_not_contains "$output" "install -c -m 644"
 
   # issue #55: with FS install disabled, nothing reinstalls the extension as
   # a side effect, so pg_regress runs against a genuinely uninstalled tree
@@ -242,19 +252,6 @@ EOF
   if echo "$prereq_line" | tr ' ' '\n' | grep -qx install; then
     error "installcheck's parsed prerequisite list still includes 'install' with PGXNTOOL_ENABLE_FS_INSTALL=no: $prereq_line"
   fi
-}
-
-@test "PGXNTOOL_ENABLE_FS_INSTALL=no removes install's recipe from make test's dry run" {
-  # `install` isn't declared .PHONY (checked both PGXS's pgxs.mk and
-  # pgxntool's base.mk) -- it's "always out of date" for a plainer reason:
-  # there's no file literally named "install" on disk for Make to compare a
-  # timestamp against. That's why the recipe shows in a dry run whenever
-  # `install` remains a prerequisite, regardless of whether the extension is
-  # already installed on disk -- unlike the pgtap DESTDIR-faking test below,
-  # no DESTDIR-faking is needed here.
-  run make -n test PGXNTOOL_ENABLE_FS_INSTALL=no
-  assert_success
-  assert_not_contains "$output" "install -c -m 644"
 }
 
 @test "PGXNTOOL_ENABLE_FS_INSTALL rejects invalid values" {
