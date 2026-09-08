@@ -18,7 +18,7 @@ Monitor GitHub Actions CI across both repos after a push. Always run in backgrou
 - `/ci` — monitor the most recent CI run on both repos for the current branch
 - `/ci pgxntool-test` — monitor pgxntool-test only
 - `/ci pgxntool` — monitor pgxntool only
-- `/ci <branch> <pgxntool-sha> <pgxntool-test-sha>` — monitor specific push SHAs (most reliable)
+- `/ci both <branch> <pgxntool-test-sha> <pgxntool-sha>` — monitor specific push SHAs (most reliable)
 
 ## Workflow
 
@@ -41,9 +41,11 @@ When pushing to both repos, always pass the SHAs to avoid a race condition where
 
 > **Race condition note**: `gh run list --branch` returns the most recent run on
 > that branch — if two pushes happen close together (e.g. two sessions pushing
-> in parallel), it may pick up the wrong run. Passing `--commit SHA` targets the
-> exact push and avoids this. When SHA is unavailable, always verify the
-> `=== BRANCHES: ===` line in the output matches the code you pushed.
+> in parallel), it may pick up the wrong run. Passing the `sha1`/`sha2`
+> positional arguments above lets the script resolve the run via `gh run list
+> --commit` internally, targeting the exact push and avoiding this — the
+> script itself has no `--commit` flag. When SHA is unavailable, always verify
+> the `=== BRANCHES: ===` line in the output matches the code you pushed.
 
 **Always use `run_in_background: true`.**
 
