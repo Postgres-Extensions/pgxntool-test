@@ -234,6 +234,11 @@ EOF
 }
 
 @test "PGXNTOOL_ENABLE_FS_INSTALL=no removes install's recipe from make test's dry run" {
+  # Unlike the pgtap DESTDIR-faking test below, `install`'s own recipe isn't
+  # gated by a file-existence check -- there's no target file named "install"
+  # for Make to compare mtimes against, so the recipe shows in a dry run
+  # whenever `install` remains a prerequisite, regardless of whether the
+  # extension is already installed on disk. No DESTDIR-faking needed here.
   run make -n test PGXNTOOL_ENABLE_FS_INSTALL=no
   assert_success
   assert_not_contains "$output" "install -c -m 644"
@@ -245,19 +250,6 @@ EOF
   assert_contains "$output" "PGXNTOOL_ENABLE_FS_INSTALL must be"
 }
 
-@test "make test succeeds with PGXNTOOL_ENABLE_FS_INSTALL=no when the extension is already installed" {
-  skip_if_no_postgres
-
-  # Stands in for "existing mode": the extension is already deployed (here,
-  # via a normal install) before test/installcheck ever runs, so disabling
-  # the FS install prerequisite shouldn't stop the suite from passing.
-  run make install
-  assert_success
-
-  run make test PGXNTOOL_ENABLE_FS_INSTALL=no
-  assert_success
-}
-
 @test "make test fails with PGXNTOOL_ENABLE_FS_INSTALL=no against a genuinely uninstalled tree" {
   skip_if_no_postgres
 
@@ -266,15 +258,30 @@ EOF
   # uninstalled tree that means failure, which is the real-world proof that
   # `install` genuinely didn't run as a side effect (the structural test
   # above already proves the edge itself is gone; this proves it matters).
+  #
+  # Runs before the "already installed" test below so the install/uninstall
+  # state change happens once each way (uninstall here, install there)
+  # instead of install/uninstall/install.
   run make uninstall
   assert_success
 
   run make test PGXNTOOL_ENABLE_FS_INSTALL=no
   assert_failure
   assert_contains "$output" "does not exist"
+}
 
-  # Restore installed state for the rest of this file's tests.
+@test "make test succeeds with PGXNTOOL_ENABLE_FS_INSTALL=no when the extension is already installed" {
+  skip_if_no_postgres
+
+  # Stands in for "existing mode": the extension is already deployed (here,
+  # via a normal install) before test/installcheck ever runs, so disabling
+  # the FS install prerequisite shouldn't stop the suite from passing. Also
+  # restores installed state after the uninstall test above, for the rest of
+  # this file's tests.
   run make install
+  assert_success
+
+  run make test PGXNTOOL_ENABLE_FS_INSTALL=no
   assert_success
 }
 
