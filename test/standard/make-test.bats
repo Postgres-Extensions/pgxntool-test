@@ -181,20 +181,31 @@ EOF
     error "installcheck's parsed prerequisite list does not include 'install': $prereq_line"
 }
 
-@test "make test succeeds from a genuinely uninstalled state (issue #79)" {
+@test "make test fails with PGXNTOOL_ENABLE_FS_INSTALL=no, but succeeds by default, from a genuinely uninstalled tree (issues #55, #79)" {
   skip_if_no_postgres
 
-  # The `make -p` test above is the primary proof for this issue (the
-  # dependency edge genuinely exists in the parsed makefile). This test is a
-  # complementary real-world sanity check of the whole pipeline: on a
-  # genuinely uninstalled tree, does pg_regress actually find the extension
-  # already installed by the time it runs? `make uninstall` forces that
-  # precondition regardless of what any earlier test in this file already
-  # installed on the shared PostgreSQL instance -- the original bug was
-  # historically masked in exactly that way.
+  # Shares one `make uninstall` for issue #79's original regression check
+  # and issue #55's proof that install doesn't happen as a side effect
+  # (below), instead of each uninstalling separately.
   run make uninstall
   assert_success
 
+  # issue #55: with FS install disabled, nothing reinstalls the extension as
+  # a side effect, so pg_regress runs against a genuinely uninstalled tree
+  # and fails. The structural test further below already proves the
+  # `installcheck: install` edge is genuinely gone; this proves it matters.
+  run make test PGXNTOOL_ENABLE_FS_INSTALL=no
+  assert_failure
+  assert_contains "$output" "does not exist"
+
+  # issue #79: by default, does pg_regress actually find the extension
+  # already installed by the time it runs? The `make -p` test above is the
+  # primary proof (the dependency edge genuinely exists in the parsed
+  # makefile); this is the complementary real-world sanity check of the
+  # whole pipeline. The original bug was historically masked because some
+  # earlier test had already installed the extension on the shared
+  # PostgreSQL instance -- the uninstall above forces the precondition
+  # regardless.
   run make test
   assert_success
   assert_not_contains "$output" "does not exist"
@@ -234,11 +245,13 @@ EOF
 }
 
 @test "PGXNTOOL_ENABLE_FS_INSTALL=no removes install's recipe from make test's dry run" {
-  # Unlike the pgtap DESTDIR-faking test below, `install`'s own recipe isn't
-  # gated by a file-existence check -- there's no target file named "install"
-  # for Make to compare mtimes against, so the recipe shows in a dry run
-  # whenever `install` remains a prerequisite, regardless of whether the
-  # extension is already installed on disk. No DESTDIR-faking needed here.
+  # `install` isn't declared .PHONY (checked both PGXS's pgxs.mk and
+  # pgxntool's base.mk) -- it's "always out of date" for a plainer reason:
+  # there's no file literally named "install" on disk for Make to compare a
+  # timestamp against. That's why the recipe shows in a dry run whenever
+  # `install` remains a prerequisite, regardless of whether the extension is
+  # already installed on disk -- unlike the pgtap DESTDIR-faking test below,
+  # no DESTDIR-faking is needed here.
   run make -n test PGXNTOOL_ENABLE_FS_INSTALL=no
   assert_success
   assert_not_contains "$output" "install -c -m 644"
@@ -250,34 +263,14 @@ EOF
   assert_contains "$output" "PGXNTOOL_ENABLE_FS_INSTALL must be"
 }
 
-@test "make test fails with PGXNTOOL_ENABLE_FS_INSTALL=no against a genuinely uninstalled tree" {
-  skip_if_no_postgres
-
-  # Inverse of the issue #79 test above: with filesystem install disabled,
-  # pg_regress must run against whatever's already there -- on a genuinely
-  # uninstalled tree that means failure, which is the real-world proof that
-  # `install` genuinely didn't run as a side effect (the structural test
-  # above already proves the edge itself is gone; this proves it matters).
-  #
-  # Runs before the "already installed" test below so the install/uninstall
-  # state change happens once each way (uninstall here, install there)
-  # instead of install/uninstall/install.
-  run make uninstall
-  assert_success
-
-  run make test PGXNTOOL_ENABLE_FS_INSTALL=no
-  assert_failure
-  assert_contains "$output" "does not exist"
-}
-
 @test "make test succeeds with PGXNTOOL_ENABLE_FS_INSTALL=no when the extension is already installed" {
   skip_if_no_postgres
 
   # Stands in for "existing mode": the extension is already deployed (here,
   # via a normal install) before test/installcheck ever runs, so disabling
-  # the FS install prerequisite shouldn't stop the suite from passing. Also
-  # restores installed state after the uninstall test above, for the rest of
-  # this file's tests.
+  # the FS install prerequisite shouldn't stop the suite from passing.
+  # State is already installed at this point, but the explicit install below
+  # documents the precondition this test actually relies on.
   run make install
   assert_success
 
