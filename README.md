@@ -113,10 +113,10 @@ A change normally touches both repos, so open a PR in **each repo from a branch 
 CI looks for a `pgxntool` branch with the same name **on your account** (the PR's head fork). If it exists, tests run against that branch; if not, they run against `pgxntool` master **from Postgres-Extensions**. Results appear directly on your pgxntool-test PR.
 
 **When you open a PR in `pgxntool`:**
-CI waits for the paired pgxntool-test PR (matched by branch name **and** account) to complete (polling for up to 20 minutes), then checks whether it passed. pgxntool CI does not run tests itself — it relies entirely on the pgxntool-test CI results.
+CI waits for the paired pgxntool-test PR (matched by branch name **and** account) to complete (polling for up to 20 minutes), then checks whether it passed. When a paired PR is found, pgxntool CI does not run tests itself — it relies entirely on the pgxntool-test CI results, avoiding duplicate work. When no paired PR is found, pgxntool's own test job runs the tests directly against pgxntool-test master instead (see below).
 
 - **If a paired test PR is found and its CI passes**: pgxntool CI passes. There is no test duplication.
-- **If no paired test PR is found**: pgxntool CI fails (see below).
+- **If no paired test PR is found**: the `check-test-pr` check still fails (see below), but pgxntool's test job also runs against pgxntool-test master regardless, so there's a real pass/fail signal to inform whether overriding the failed check is safe.
 
 > **Fork contributors — security note:** CI only ever pairs branches within the **same account**. It will never match your fork's branch to a same-named branch on a different account (including Postgres-Extensions). When there is no paired branch, the *other* repo is always taken from **`Postgres-Extensions/master`** — never a fork's `master` — so a stale or modified fork `master` can't influence the run. `master` is the only ref ever taken cross-account.
 
@@ -144,11 +144,7 @@ To request the label:
 
 ### Branch protection
 
-The `check-test-pr` status check on pgxntool is a required check for merging to `master`. It only passes when either:
-- A corresponding pgxntool-test PR exists (matching branch name **and** account) and its tests are **passing**, or
-- A maintainer has applied the `commit-with-no-tests` label.
-
-This ensures pgxntool changes cannot be merged without passing test coverage.
+pgxntool's `master` currently has no branch protection configured, so `check-test-pr` is not a technically-enforced merge gate — a maintainer can merge via GitHub regardless of whether it passed. It's process enforcement only: its failure is visible on the PR and signals that a pairing is missing or the paired tests failed, but nothing prevents merging past it.
 
 ## Development
 
