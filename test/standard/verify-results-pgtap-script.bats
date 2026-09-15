@@ -112,6 +112,12 @@ ok 1'
 @test "verify-results-pgtap.sh: refuses to bless a brand-new test whose output holds a SQL error" {
   # ON_ERROR_STOP aborts the script at the error, so pgtap emits neither
   # 'not ok' nor its plan-mismatch line and the scan above finds nothing.
+  #
+  # Both of psql's real renderings have to block. pg_regress feeds psql on
+  # stdin, so an error in the test file itself starts at column 0, while one
+  # inside an \i'd file (setup.sql/finish.sql, which every pgxntool test
+  # sources) carries a "psql:<file>:<line>: " prefix -- a column-anchored
+  # match would sail straight past the second.
   write_results errtest '1..2
 ok 1
 ERROR:  42P01: relation "nope" does not exist'
@@ -123,6 +129,36 @@ ERROR:  42P01: relation "nope" does not exist'
   run "$SCRIPT" "$TESTOUT"
   assert_failure_with_status 1
   assert_contains "$output" "errtest.out"
+
+  rm -f "$TESTOUT/regression.diffs"
+  write_results errtest '1..2
+ok 1
+psql:test/pgxntool/setup.sql:3: ERROR:  42P01: relation "nope" does not exist'
+  append_diff_block errtest '@@ -0,0 +1,3 @@
++1..2
++ok 1
++psql:test/pgxntool/setup.sql:3: ERROR:  42P01: relation "nope" does not exist'
+
+  run "$SCRIPT" "$TESTOUT"
+  assert_failure_with_status 1
+  assert_contains "$output" "errtest.out"
+}
+
+@test "verify-results-pgtap.sh: blesses a passing test whose description merely mentions ERROR:" {
+  # psql writes two spaces after the severity; a pgtap description quoting an
+  # error message does not, and isn't at the start of a line or after ": ".
+  # Without that distinction a legitimately-passing new test could never have
+  # its first expected output created.
+  write_results described '1..1
+ok 1 - raises ERROR: division by zero'
+  append_diff_block described '@@ -0,0 +1,2 @@
++1..1
++ok 1 - raises ERROR: division by zero'
+
+  run "$SCRIPT" "$TESTOUT"
+  assert_success
+  assert_contains "$output" "no expected output yet"
+  assert_contains "$output" "described.out"
 }
 
 @test "verify-results-pgtap.sh: classifies by unprefixed headers, not by diffed content" {
@@ -154,6 +190,63 @@ ok 1'
   run "$SCRIPT" "$TESTOUT"
   assert_failure_with_status 1
   assert_contains "$output" "commented.out"
+}
+
+@test "verify-results-pgtap.sh: blocks when regression.diffs exists but is empty" {
+  # pg_regress truncates the file at startup and removes it again on a clean
+  # finish, so an empty one means it died before comparing anything -- and
+  # base.mk's `.IGNORE: installcheck` lets `make results` reach here anyway.
+  # results/ then holds whatever an earlier run left, so passing this would
+  # bless stale output.
+  write_results stale '1..1
+ok 1'
+  : > "$TESTOUT/regression.diffs"
+
+  run "$SCRIPT" "$TESTOUT"
+  assert_failure_with_status 1
+  assert_contains "$output" "pg_regress did not complete"
+}
+
+@test "verify-results-pgtap.sh: blocks a block whose hunks aren't all '@@ -0,0'" {
+  # Two fail-closed shapes that aren't a clean no-baseline block: a header
+  # with no hunks at all (what a pre-12 context diff looks like here), and a
+  # block that only partly diffed against an empty file.
+  write_results nohunk '1..1
+ok 1'
+  append_diff_block nohunk ''
+
+  run "$SCRIPT" "$TESTOUT"
+  assert_failure_with_status 1
+  assert_contains "$output" "nohunk.out"
+
+  rm -f "$TESTOUT/regression.diffs"
+  write_results mixed '1..1
+ok 1'
+  append_diff_block mixed '@@ -0,0 +1,1 @@
++1..1
+@@ -3,1 +4,1 @@
+-was here
++ok 1'
+
+  run "$SCRIPT" "$TESTOUT"
+  assert_failure_with_status 1
+  assert_contains "$output" "mixed.out"
+}
+
+@test "verify-results-pgtap.sh: blocks when unrecognized content follows a valid block" {
+  # The whole file has to fail closed, not just refuse to classify: a block
+  # that reads as blessable is no reason to ignore text after it that fits no
+  # part of the diff format.
+  write_results newtest '1..1
+ok 1'
+  append_diff_block newtest '@@ -0,0 +1,2 @@
++1..1
++ok 1'
+  printf 'diff: /nonexistent: No such file or directory\n' >> "$TESTOUT/regression.diffs"
+
+  run "$SCRIPT" "$TESTOUT"
+  assert_failure_with_status 1
+  assert_contains "$output" "unrecognized content"
 }
 
 @test "verify-results-pgtap.sh: blocks on regression.diffs content it cannot classify" {

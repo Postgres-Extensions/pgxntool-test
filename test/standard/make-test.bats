@@ -545,6 +545,10 @@ EOF
 
   run make results
   assert_success
+  # The NOTE proves the no-baseline branch is what let this through, rather
+  # than the file appearing for some other reason.
+  assert_contains "$output" "no expected output yet"
+  assert_contains "$output" "brand_new.out"
   assert_file_exists "test/expected/brand_new.out"
 
   # The seeded baseline is what the test actually produces.
