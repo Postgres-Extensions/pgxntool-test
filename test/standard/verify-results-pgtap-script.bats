@@ -247,6 +247,19 @@ ok 1'
   run "$SCRIPT" "$TESTOUT"
   assert_failure_with_status 1
   assert_contains "$output" "unrecognized content"
+
+  # ...but diff's own no-newline marker is part of the format, not junk.
+  # Treating it as junk would block a legitimate first bless of any test
+  # whose output doesn't end in a newline.
+  rm -f "$TESTOUT/regression.diffs"
+  append_diff_block newtest '@@ -0,0 +1,2 @@
++1..1
++ok 1
+\ No newline at end of file'
+
+  run "$SCRIPT" "$TESTOUT"
+  assert_success
+  assert_contains "$output" "no expected output yet"
 }
 
 @test "verify-results-pgtap.sh: blocks on regression.diffs content it cannot classify" {
