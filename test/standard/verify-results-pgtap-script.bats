@@ -270,6 +270,14 @@ ok 1'
   run "$SCRIPT" "$TESTOUT"
   assert_failure_with_status 1
   assert_contains "$output" "unrecognized"
+
+  # Diff body lines with no header before them yield no classification at
+  # all rather than an unrecognized one, which has to block just the same.
+  printf ' 1..1\n+ok 1\n' > "$TESTOUT/regression.diffs"
+
+  run "$SCRIPT" "$TESTOUT"
+  assert_failure_with_status 1
+  assert_contains "$output" "unrecognized"
 }
 
 @test "verify-results-pgtap.sh: detects a pgtap failure" {
