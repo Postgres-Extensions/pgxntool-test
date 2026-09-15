@@ -176,7 +176,7 @@ teardown_file() {
   
   # Verify control file is in Makefile dependencies
   # Use make print-VARIABLE to debug Makefile variable values
-  run make print-PGXNTOOL_CONTROL_FILES
+  run make print-_PGXNTOOL_CONTROL_FILES
   assert_success
   assert_contains "pgxntool-test.control"
   
