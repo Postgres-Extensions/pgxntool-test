@@ -551,7 +551,9 @@ EOF
   run make test
   assert_success
 
-  rm -f test/sql/brand_new.sql test/expected/brand_new.out
+  # results/ too: `make results` blesses every results/*.out into expected/,
+  # so a leftover here would reappear as an orphan for check-stale-expected.
+  rm -f test/sql/brand_new.sql test/expected/brand_new.out test/results/brand_new.out
 }
 
 @test "verify-results propagates a pgtap failure the script detects" {
