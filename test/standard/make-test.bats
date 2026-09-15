@@ -13,8 +13,9 @@
 #   (issue #79)
 # - check-stale-expected catches orphaned test/expected/*.out files (issue #14)
 # - `make test` exits non-zero on a real regression.diffs mismatch (issue #49)
-# - verify-results blocks `make results` when tests are failing, detects
-#   pgtap failures, and can be disabled
+# - verify-results blocks `make results` when tests are failing, lets a
+#   brand-new test's first expected output through (issue #119), and can be
+#   disabled. Its own pass/fail logic lives in verify-results-pgtap-script.bats
 
 load ../lib/helpers
 
@@ -529,9 +530,42 @@ EOF
   assert_success
 }
 
-@test "verify-results detects pgtap failures in result files" {
+@test "make results seeds the first expected output for a brand-new test (issue #119)" {
   skip_if_no_postgres
 
+  # base.mk touches an empty test/expected/<name>.out for any test/sql/*.sql
+  # that lacks one (pg_regress aborts on a missing expected file), so
+  # pg_regress reports a difference no matter how clean the new test's actual
+  # output is. This is the one case that needs a real pg_regress run: it
+  # proves the diff pg_regress writes against that placeholder really is the
+  # shape verify-results-pgtap.sh treats as "no baseline yet" rather than as
+  # a failure. The script's own classification is covered cheaply in
+  # verify-results-pgtap-script.bats.
+  cp test/sql/pgxntool-test.sql test/sql/brand_new.sql
+
+  run make results
+  assert_success
+  # The NOTE proves the no-baseline branch is what let this through, rather
+  # than the file appearing for some other reason.
+  assert_contains "$output" "no expected output yet"
+  assert_contains "$output" "brand_new.out"
+  assert_file_exists "test/expected/brand_new.out"
+
+  # The seeded baseline is what the test actually produces.
+  run make test
+  assert_success
+
+  # results/ too: `make results` blesses every results/*.out into expected/,
+  # so a leftover here would reappear as an orphan for check-stale-expected.
+  rm -f test/sql/brand_new.sql test/expected/brand_new.out test/results/brand_new.out
+}
+
+@test "verify-results propagates a pgtap failure the script detects" {
+  skip_if_no_postgres
+
+  # Wiring only -- that `make verify-results` really invokes the script and
+  # surfaces its failure. Which pgtap output counts as a failure (TODO
+  # exclusion, plan mismatches) is decided by the script and tested there.
   mkdir -p test/results
   cat > test/results/pgtap_fail.out <<'EOF'
 1..2
@@ -544,39 +578,6 @@ EOF
   assert_contains "$output" "pgtap failure detected"
 
   rm -f test/results/pgtap_fail.out
-}
-
-@test "verify-results ignores pgtap TODO failures" {
-  skip_if_no_postgres
-
-  mkdir -p test/results
-  cat > test/results/pgtap_todo.out <<'EOF'
-1..1
-not ok 1 - known issue # TODO fix later
-EOF
-
-  run make verify-results
-  assert_success
-
-  rm -f test/results/pgtap_todo.out
-}
-
-@test "verify-results detects pgtap plan mismatch" {
-  skip_if_no_postgres
-
-  mkdir -p test/results
-  cat > test/results/pgtap_plan.out <<'EOF'
-1..3
-ok 1 - test one
-ok 2 - test two
-# Looks like you planned 3 tests but ran 2
-EOF
-
-  run make verify-results
-  assert_failure
-  assert_contains "$output" "pgtap plan mismatch"
-
-  rm -f test/results/pgtap_plan.out
 }
 
 # ============================================================================
