@@ -193,6 +193,41 @@ EOF
   assert_not_contains "$output" "does not exist"
 }
 
+# Test: test-build must gate the full suite, not run after it (issue #108)
+#
+# TEST_DEPS lists `check-stale-expected test-build install installcheck` as
+# independent, unordered prerequisites of `test` (see the issue #79 section
+# above for why position in TEST_DEPS is not an ordering guarantee).
+# check-stale-expected's own `check-stale-expected: installcheck` edge pulls
+# in installcheck (and, via `installcheck: install`, install) while Make is
+# still resolving check-stale-expected -- before Make ever reaches the
+# separately-listed `test-build` prerequisite. So the full pg_regress suite
+# actually runs before test-build's own sanity check, even though test-build
+# exists to catch build errors before the full suite runs. An explicit
+# `installcheck: test-build` edge (added only when
+# PGXNTOOL_ENABLE_TEST_BUILD=yes) is the fix, mirroring the `installcheck:
+# install` and `check-stale-expected: installcheck` edges already in place.
+
+@test "test-build's recipe runs before installcheck's pg_regress invocation (issue #108)" {
+  # No PostgreSQL needed: the recipe order in `make -n test` output is enough
+  # to prove the dependency edge is (or isn't) real, same approach as the
+  # check-stale-expected ordering test below.
+  run make -n test PGXNTOOL_ENABLE_TEST_BUILD=yes
+  assert_success
+
+  local build_line pg_regress_line
+  build_line=$(echo "$output" | grep -n "run-test-build.sh" | head -1 | cut -d: -f1)
+  # Exclude test-build's own pg_regress invocation (identified by
+  # --outputdir=test/build, same convention as the check-stale-expected
+  # ordering test below) to isolate the main suite's invocation.
+  pg_regress_line=$(echo "$output" | grep -n "pg_regress " | grep -v -- '--outputdir=test/build' | tail -1 | cut -d: -f1)
+
+  [ -n "$build_line" ] || error "run-test-build.sh invocation not found in 'make -n test' output"
+  [ -n "$pg_regress_line" ] || error "no pg_regress invocation found in 'make -n test' output"
+  [ "$build_line" -lt "$pg_regress_line" ] || \
+    error "test-build (dry-run line $build_line) must come before installcheck's pg_regress (line $pg_regress_line) -- test-build is meant to gate the full suite, not run after it"
+}
+
 # Test: check-stale-expected (issue #14)
 #
 # `make test` never caught a stale test/expected/*.out left behind after a
@@ -269,7 +304,7 @@ EOF
   # script must never even be invoked, not merely have a failure from it
   # ignored. That's a materially stronger claim than "make test succeeds
   # despite a stale file", so prove it directly: point
-  # _CHECK_STALE_EXPECTED_SCRIPT -- the one variable the
+  # _PGXNTOOL_CHECK_STALE_EXPECTED_SCRIPT -- the one variable the
   # check-stale-expected recipe actually invokes (see base.mk) -- at a stub
   # that only touches a marker file and fails. No need to fake out
   # PGXNTOOL_DIR itself, since this variable is the sole thing standing
@@ -281,7 +316,7 @@ EOF
   local stub_script
   stub_script=$(make_stub_script check-stale-expected-stub 1 "" "$marker")
 
-  run make test PGXNTOOL_ENABLE_CHECK_STALE_EXPECTED=no _CHECK_STALE_EXPECTED_SCRIPT="$stub_script"
+  run make test PGXNTOOL_ENABLE_CHECK_STALE_EXPECTED=no _PGXNTOOL_CHECK_STALE_EXPECTED_SCRIPT="$stub_script"
   assert_success
   assert_file_not_exists "$marker"
 }
@@ -315,7 +350,7 @@ EOF
   # base.mk's responsibility, not the script's decision logic (the real
   # script's distinct exit codes and messages are already covered directly
   # in check-stale-expected-script.bats): does `make check-stale-expected`
-  # correctly surface whatever _CHECK_STALE_EXPECTED_SCRIPT does? A
+  # correctly surface whatever _PGXNTOOL_CHECK_STALE_EXPECTED_SCRIPT does? A
   # stub that deterministically prints a message and exits nonzero must
   # make the target (and `make`'s own recipe-failure handling) fail and
   # show that message; a stub that exits 0 must let it pass -- regardless
@@ -323,13 +358,67 @@ EOF
   local stub_script
   stub_script=$(make_stub_script fail-stub 5 "STUB SENTINEL MESSAGE")
 
-  run make check-stale-expected _CHECK_STALE_EXPECTED_SCRIPT="$stub_script"
+  run make check-stale-expected _PGXNTOOL_CHECK_STALE_EXPECTED_SCRIPT="$stub_script"
   assert_failure
   assert_contains "$output" "STUB SENTINEL MESSAGE"
 
   stub_script=$(make_stub_script pass-stub 0)
 
-  run make check-stale-expected _CHECK_STALE_EXPECTED_SCRIPT="$stub_script"
+  run make check-stale-expected _PGXNTOOL_CHECK_STALE_EXPECTED_SCRIPT="$stub_script"
+  assert_success
+}
+
+# Test: check-test-install-error-stop (issue #97)
+#
+# test/install/*.sql files never get a real diff (see the IMPORTANT note in
+# base.mk's test/install section) -- ON_ERROR_STOP is the only thing that
+# still turns a hard error into a build failure. check-test-install-error-stop
+# is a pure static scan enforcing that every test/install/*.sql file sets it.
+# The script's own pass/fail decision logic is covered directly in
+# check-test-install-error-stop-script.bats; this file covers only base.mk's
+# wiring: does `make test` actually invoke the script, and can it be disabled.
+
+@test "check-test-install-error-stop passes on clean template state" {
+  # End-to-end smoke check that the real template stays in the passing state
+  # CLAUDE.md's Template Requirements section requires, through the real
+  # recipe and real script.
+  run make check-test-install-error-stop
+  assert_success
+}
+
+@test "check-test-install-error-stop recipe invokes the script with TESTDIR" {
+  run make -n check-test-install-error-stop
+  assert_success
+  assert_contains "$output" "test/bin/check-test-install-error-stop.sh test"
+}
+
+@test "PGXNTOOL_ENABLE_TEST_INSTALL_ERROR_STOP_CHECK=no: make test never invokes the script" {
+  skip_if_no_postgres
+
+  # Same proof pattern as check-stale-expected's disable test above: point
+  # _CHECK_TEST_INSTALL_ERROR_STOP_SCRIPT at a stub that only touches a
+  # marker file and fails. If the marker never appears, the script was
+  # genuinely never invoked, not merely tolerated.
+  local marker="$BATS_TEST_TMPDIR/check-test-install-error-stop-invoked"
+  local stub_script
+  stub_script=$(make_stub_script check-test-install-error-stop-stub 1 "" "$marker")
+
+  run make test PGXNTOOL_ENABLE_TEST_INSTALL_ERROR_STOP_CHECK=no _CHECK_TEST_INSTALL_ERROR_STOP_SCRIPT="$stub_script"
+  assert_success
+  assert_file_not_exists "$marker"
+}
+
+@test "make correctly propagates check-test-install-error-stop.sh's exit status and output" {
+  local stub_script
+  stub_script=$(make_stub_script fail-stub 5 "STUB SENTINEL MESSAGE")
+
+  run make check-test-install-error-stop _CHECK_TEST_INSTALL_ERROR_STOP_SCRIPT="$stub_script"
+  assert_failure
+  assert_contains "$output" "STUB SENTINEL MESSAGE"
+
+  stub_script=$(make_stub_script pass-stub 0)
+
+  run make check-test-install-error-stop _CHECK_TEST_INSTALL_ERROR_STOP_SCRIPT="$stub_script"
   assert_success
 }
 
@@ -488,6 +577,63 @@ EOF
   assert_contains "$output" "pgtap plan mismatch"
 
   rm -f test/results/pgtap_plan.out
+}
+
+# ============================================================================
+# build-results (issue #108)
+# ============================================================================
+#
+# build-results mirrors `make results`, but for test-build's separate
+# pg_regress pass: bless test/build/'s actual output as the new expected
+# output. Unlike `make results`, it refuses to bless any file whose actual
+# output contains an "ERROR:" line -- see base.mk's build-results comment
+# for why that's essential (blessing an errored build as the new baseline
+# would defeat the entire point of test-build gating the main suite).
+
+@test "build-results refreshes a stale test/build/expected/*.out" {
+  skip_if_no_postgres
+
+  # Corrupt the committed expected output (stale, not a real build break).
+  echo "-- deliberately stale expected output" >> test/build/expected/build_check.out
+
+  run git status --porcelain test/build/expected/build_check.out
+  [ -n "$output" ] || error "corruption didn't register as a git modification"
+
+  run make build-results
+  assert_success
+
+  # The template's build_check.sql is deterministic, so a correct refresh
+  # must land back on exactly the committed content.
+  run git status --porcelain test/build/expected/build_check.out
+  [ -z "$output" ] || error "build_check.out doesn't match the committed baseline after build-results: $output"
+}
+
+@test "build-results skips a file whose actual output contains ERROR:, but still refreshes clean files" {
+  skip_if_no_postgres
+
+  # Re-corrupt build_check.out (clean, no ERROR) so this test can prove it
+  # still gets refreshed even though a *different* file in the same run
+  # fails and blocks the overall exit status.
+  echo "-- deliberately stale expected output" >> test/build/expected/build_check.out
+
+  # Force simple_build_test.sql to error.
+  echo "SELECT * FROM definitely_nonexistent_table;" >> test/build/simple_build_test.sql
+
+  run make build-results
+  assert_failure
+  assert_contains "$output" "simple_build_test.out"
+  assert_contains "$output" "cp test/build/results/simple_build_test.out test/build/expected/simple_build_test.out"
+
+  # The clean file still got refreshed despite the other file's skip.
+  run git status --porcelain test/build/expected/build_check.out
+  [ -z "$output" ] || error "build_check.out should have been refreshed despite simple_build_test.sql's failure: $output"
+
+  # The errored file's expected output was left untouched, not blessed with
+  # error content.
+  run git status --porcelain test/build/expected/simple_build_test.out
+  [ -z "$output" ] || error "simple_build_test.out should have been left untouched, not blessed: $output"
+
+  git checkout -- test/build/simple_build_test.sql
 }
 
 # vi: expandtab sw=2 ts=2
