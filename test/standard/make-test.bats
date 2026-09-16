@@ -580,17 +580,17 @@ EOF
 }
 
 # ============================================================================
-# build-results (issue #108)
+# results-build (issue #108)
 # ============================================================================
 #
-# build-results mirrors `make results`, but for test-build's separate
+# results-build mirrors `make results`, but for test-build's separate
 # pg_regress pass: bless test/build/'s actual output as the new expected
 # output. Unlike `make results`, it refuses to bless any file whose actual
-# output contains an "ERROR:" line -- see base.mk's build-results comment
+# output contains an "ERROR:" line -- see base.mk's results-build comment
 # for why that's essential (blessing an errored build as the new baseline
 # would defeat the entire point of test-build gating the main suite).
 
-@test "build-results refreshes a stale test/build/expected/*.out" {
+@test "results-build refreshes a stale test/build/expected/*.out" {
   skip_if_no_postgres
 
   # Corrupt the committed expected output (stale, not a real build break).
@@ -599,16 +599,16 @@ EOF
   run git status --porcelain test/build/expected/build_check.out
   [ -n "$output" ] || error "corruption didn't register as a git modification"
 
-  run make build-results
+  run make results-build
   assert_success
 
   # The template's build_check.sql is deterministic, so a correct refresh
   # must land back on exactly the committed content.
   run git status --porcelain test/build/expected/build_check.out
-  [ -z "$output" ] || error "build_check.out doesn't match the committed baseline after build-results: $output"
+  [ -z "$output" ] || error "build_check.out doesn't match the committed baseline after results-build: $output"
 }
 
-@test "build-results skips a file whose actual output contains ERROR:, but still refreshes clean files" {
+@test "results-build skips a file whose actual output contains ERROR:, but still refreshes clean files" {
   skip_if_no_postgres
 
   # Re-corrupt build_check.out (clean, no ERROR) so this test can prove it
@@ -619,7 +619,7 @@ EOF
   # Force simple_build_test.sql to error.
   echo "SELECT * FROM definitely_nonexistent_table;" >> test/build/simple_build_test.sql
 
-  run make build-results
+  run make results-build
   assert_failure
   assert_contains "$output" "simple_build_test.out"
   assert_contains "$output" "cp test/build/results/simple_build_test.out test/build/expected/simple_build_test.out"
