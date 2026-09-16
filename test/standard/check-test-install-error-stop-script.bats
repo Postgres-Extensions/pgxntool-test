@@ -42,6 +42,22 @@ setup() {
   assert_success
 }
 
+@test "check-test-install-error-stop.sh: passes when ON_ERROR_STOP is explicitly turned on then off" {
+  printf '\\set ON_ERROR_STOP on\nCREATE TABLE foo AS SELECT 1;\n\\set ON_ERROR_STOP off\n' > "$TESTDIR/install/foo.sql"
+
+  run "$SCRIPT" "$TESTDIR"
+  assert_success
+}
+
+@test "check-test-install-error-stop.sh: fails when ON_ERROR_STOP is only ever turned off" {
+  printf '\\set ON_ERROR_STOP off\nCREATE TABLE foo AS SELECT 1;\n' > "$TESTDIR/install/foo.sql"
+
+  run "$SCRIPT" "$TESTDIR"
+  assert_failure_with_status 1
+  assert_contains "$output" "foo.sql"
+  assert_contains "$output" "ON_ERROR_STOP"
+}
+
 @test "check-test-install-error-stop.sh: fails when a file has neither" {
   printf 'CREATE TABLE foo AS SELECT 1;\n' > "$TESTDIR/install/foo.sql"
 
