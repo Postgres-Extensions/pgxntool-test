@@ -22,6 +22,17 @@
 
 set -euo pipefail
 
+# Purely positional args, no flags (see the header comment above) - catch a
+# "--commit SHA"-style invocation here instead of letting it silently
+# misparse into REPOS="--commit" (falls through to the "both" default) with
+# the SHA itself landing in BRANCH, which then polls a nonexistent branch
+# until timeout.
+if [[ "${1:-}" == --* ]]; then
+  echo "monitor-ci.sh takes positional args, not flags: [repos] [branch] [sha_pgxntool_test] [sha_pgxntool]" >&2
+  echo "Got '$1' where 'repos' was expected. See the /ci skill's Usage section." >&2
+  exit 64
+fi
+
 REPOS="${1:-both}"
 BRANCH="${2:-$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")}"
 SHA_TEST="${3:-}"
