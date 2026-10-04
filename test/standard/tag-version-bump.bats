@@ -18,7 +18,7 @@
 #   against scratch control files -- no make, no foundation, no PostgreSQL.
 # - post-tag-version-bump's own wiring (does it pass the right script/args)
 #   is proven via make -n dry-runs and a stub script substituted through
-#   _POST_TAG_VERSION_BUMP_SCRIPT -- not by depending on the real script's
+#   _PGXNTOOL_POST_TAG_VERSION_BUMP_SCRIPT -- not by depending on the real script's
 #   behavior.
 # - One real end-to-end test proves the pieces actually work together.
 
@@ -28,6 +28,13 @@ load ../lib/assertions
 setup_file() {
   setup_topdir
   load_test_env "tag-version-bump"
+
+  # Build once for every make-based test below. The dry-run/stub tests don't
+  # strictly need it, but the end-to-end test needs a fully-built, clean repo.
+  ensure_foundation "$TEST_DIR"
+  cd "$TEST_REPO"
+  make
+  assert_git_clean
 }
 
 # ============================================================================
@@ -99,6 +106,27 @@ default_version = 'stable'
 EOF
 }
 
+@test "bump-default-version.sh: rewrites an unquoted default_version, preserving a trailing comment" {
+  echo 'default_version = 1.0 # bare' > "$SCRATCH/ext.control"
+
+  run "$SCRIPT" stable "$SCRATCH/ext.control"
+  assert_success
+
+  assert_file_content "$SCRATCH/ext.control" <<'EOF'
+default_version = 'stable' # bare
+EOF
+}
+
+@test "bump-default-version.sh: sed metacharacters in the new version are written literally" {
+  local v
+  for v in 'a/b' 'a&b' 'a\b'; do
+    echo "default_version = '1.0'" > "$SCRATCH/ext.control"
+    run "$SCRIPT" "$v" "$SCRATCH/ext.control"
+    assert_success
+    assert_file_content "$SCRATCH/ext.control" <<<"default_version = '$v'"
+  done
+}
+
 @test "bump-default-version.sh: updates multiple control files in one invocation" {
   echo "default_version = '1.0.0'" > "$SCRATCH/a.control"
   echo "default_version = '2.0.0'" > "$SCRATCH/b.control"
@@ -132,24 +160,29 @@ EOF
   run "$SCRIPT" stable
   assert_failure
   assert_contains "$output" "Usage:"
+
+  echo "default_version = '1.0'" > "$SCRATCH/ext.control"
+  run "$SCRIPT" "it's" "$SCRATCH/ext.control"
+  assert_failure
+  assert_contains "$output" "Invalid version"
+  run "$SCRIPT" "" "$SCRATCH/ext.control"
+  assert_failure
+  assert_contains "$output" "Invalid version"
+
+  # A value the rewrite can't match must fail, not report success unchanged
+  echo "default_version =" > "$SCRATCH/empty.control"
+  run "$SCRIPT" stable "$SCRATCH/empty.control"
+  assert_failure
+  assert_contains "$output" "Could not rewrite"
 }
 
 # ============================================================================
 # `post-tag-version-bump`: dry-run coverage
 # ============================================================================
 
+# Rides on the repo setup_file built.
 setup_foundation_repo() {
-  load_test_env "tag-version-bump"
-  ensure_foundation "$TEST_DIR"
   assert_cd "$TEST_REPO"
-
-  # PGXNTOOL_CONTROL_FILES (the control-file list the target's invocation is
-  # built from) is set unconditionally at parse time in base.mk, but build
-  # once anyway so this matches how the target is actually used, and so the
-  # real end-to-end test below has a normal, fully-built repo to work from.
-  run make
-  assert_success
-  assert_git_clean
 }
 
 @test "make -n post-tag-version-bump: invocation is shown, re-valued based on the override variable" {
@@ -176,7 +209,7 @@ setup_foundation_repo() {
   local marker="$BATS_TEST_TMPDIR/invoked"
   local stub=$(make_stub_script post-tag-stub 0 "" "$marker")
 
-  run make post-tag-version-bump _POST_TAG_VERSION_BUMP_SCRIPT="$stub"
+  run make post-tag-version-bump _PGXNTOOL_POST_TAG_VERSION_BUMP_SCRIPT="$stub"
   assert_success
   assert_file_exists "$marker"
 }
@@ -197,8 +230,14 @@ setup_foundation_repo() {
 # `post-tag-version-bump`: one real end-to-end smoke test
 # ============================================================================
 
+# Must stay the last test in this file: it commits the bump, leaving
+# default_version = 'stable' in the shared environment.
 @test "make post-tag-version-bump: real script bumps default_version and freezes the current version's SQL file" {
   setup_foundation_repo
+
+  git ls-files --error-unmatch sql/pgxntool-test--0.1.1.sql >/dev/null
+  local released
+  released=$(cat sql/pgxntool-test--0.1.1.sql)
 
   run make post-tag-version-bump
   assert_success
@@ -210,12 +249,22 @@ requires = 'plpgsql'
 schema = 'public'
 EOF
 
-  # Next build regenerates the placeholder's file and leaves the
-  # already-released 0.1.1 file alone
+  # Post-release development: a base SQL change must land only in the
+  # placeholder's file, and that file must be ignored.
+  echo "-- post-release change" >> sql/pgxntool-test.sql
+  git commit -q -am "Bump to stable; post-release change"
   run make
   assert_success
-  assert_file_exists "sql/pgxntool-test--stable.sql"
-  assert_file_exists "sql/pgxntool-test--0.1.1.sql"
+  assert_git_clean
+  [ "$(cat sql/pgxntool-test--0.1.1.sql)" = "$released" ] || error "sql/pgxntool-test--0.1.1.sql changed after the bump"
+  assert_contains "$(cat sql/pgxntool-test--stable.sql)" "post-release change"
+
+  # The update script from the released version must stay trackable
+  git check-ignore -q sql/pgxntool-test--stable.sql || error "sql/pgxntool-test--stable.sql should be ignored"
+  touch sql/pgxntool-test--0.1.1--stable.sql
+  run git check-ignore sql/pgxntool-test--0.1.1--stable.sql
+  assert_failure
+  rm sql/pgxntool-test--0.1.1--stable.sql
 }
 
 # vi: expandtab sw=2 ts=2
