@@ -44,20 +44,48 @@ setup() {
   mkdir -p "$SCRATCH"
 }
 
-@test "bump-default-version.sh: rewrites a single-quoted default_version, preserving a trailing comment" {
+@test "bump-default-version.sh: rewrites a single-quoted default_version, preserving a trailing comment and file mode" {
   cat > "$SCRATCH/ext.control" <<'EOF'
 comment = 'my extension'
-default_version = '2.5.0' # DO NOT REMOVE
+default_version = '2.5.0' # Test comment (should be unchanged)
 relocatable = false
+EOF
+  # Neither the usual umask default (644) nor mktemp's 600
+  chmod 664 "$SCRATCH/ext.control"
+
+  run "$SCRIPT" stable "$SCRATCH/ext.control"
+  assert_success
+
+  assert_file_content "$SCRATCH/ext.control" <<'EOF'
+comment = 'my extension'
+default_version = 'stable' # Test comment (should be unchanged)
+relocatable = false
+EOF
+
+  local mode
+  mode=$(stat -c %a "$SCRATCH/ext.control" 2>/dev/null || stat -f %Lp "$SCRATCH/ext.control")
+  [ "$mode" = 664 ] || error "Expected mode 664 after bump, got $mode"
+}
+
+@test "bump-default-version.sh: rewrites only default_version's value when the old version appears elsewhere" {
+  cat > "$SCRATCH/ext.control" <<'EOF'
+# Released as 2.5.0
+comment = 'Supersedes 2.5.0 of the old extension'
+#default_version = '2.5.0'
+default_version = '2.5.0' # 2.5.0 in a trailing comment (should be unchanged)
+module_pathname = '$libdir/ext-2.5.0'
 EOF
 
   run "$SCRIPT" stable "$SCRATCH/ext.control"
   assert_success
 
-  run cat "$SCRATCH/ext.control"
-  assert_contains "$output" "default_version = 'stable' # DO NOT REMOVE"
-  assert_contains "$output" "comment = 'my extension'"
-  assert_contains "$output" "relocatable = false"
+  assert_file_content "$SCRATCH/ext.control" <<'EOF'
+# Released as 2.5.0
+comment = 'Supersedes 2.5.0 of the old extension'
+#default_version = '2.5.0'
+default_version = 'stable' # 2.5.0 in a trailing comment (should be unchanged)
+module_pathname = '$libdir/ext-2.5.0'
+EOF
 }
 
 @test "bump-default-version.sh: rewrites a double-quoted default_version, normalizing to single quotes" {
@@ -66,8 +94,9 @@ EOF
   run "$SCRIPT" stable "$SCRATCH/ext.control"
   assert_success
 
-  run cat "$SCRATCH/ext.control"
-  assert_contains "$output" "default_version = 'stable'"
+  assert_file_content "$SCRATCH/ext.control" <<'EOF'
+default_version = 'stable'
+EOF
 }
 
 @test "bump-default-version.sh: updates multiple control files in one invocation" {
@@ -77,10 +106,12 @@ EOF
   run "$SCRIPT" dev "$SCRATCH/a.control" "$SCRATCH/b.control"
   assert_success
 
-  run cat "$SCRATCH/a.control"
-  assert_contains "$output" "default_version = 'dev'"
-  run cat "$SCRATCH/b.control"
-  assert_contains "$output" "default_version = 'dev'"
+  assert_file_content "$SCRATCH/a.control" <<'EOF'
+default_version = 'dev'
+EOF
+  assert_file_content "$SCRATCH/b.control" <<'EOF'
+default_version = 'dev'
+EOF
 }
 
 @test "bump-default-version.sh: error cases (missing file, missing/duplicate default_version, bad usage)" {
@@ -172,8 +203,12 @@ setup_foundation_repo() {
   run make post-tag-version-bump
   assert_success
 
-  run cat pgxntool-test.control
-  assert_contains "$output" "default_version = 'stable'"
+  assert_file_content pgxntool-test.control <<'EOF'
+comment = 'Test extension for pgxntool'
+default_version = 'stable'
+requires = 'plpgsql'
+schema = 'public'
+EOF
 
   # Next build regenerates the placeholder's file and leaves the
   # already-released 0.1.1 file alone
