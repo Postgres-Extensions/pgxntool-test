@@ -54,7 +54,6 @@ test/expected/pgxntool-test.out
 test/expected/verify_install_marker.out
 test/install/
 test/install/.gitignore
-test/install/create_install_marker.out
 test/install/create_install_marker.sql
 test/pgxntool
 test/sql/
@@ -90,6 +89,7 @@ pgxntool/WHAT_IS_THIS
 pgxntool/test/
 pgxntool/test/bin/
 pgxntool/test/bin/check-stale-expected.sh
+pgxntool/test/bin/check-test-install-error-stop.sh
 pgxntool/test/deps.sql
 pgxntool/test/pgxntool/
 pgxntool/test/pgxntool/finish.sql

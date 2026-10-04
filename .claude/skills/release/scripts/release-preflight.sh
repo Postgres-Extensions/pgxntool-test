@@ -93,35 +93,68 @@ echo "pgxntool-test: $pgxntool_test_branch"
 [ "$pgxntool_test_branch" = "master" ] || errors+=("pgxntool-test: on branch '$pgxntool_test_branch', not master")
 echo
 
-# 4. Fetch and check sync
-echo "--- Sync Status ---"
-if [ -n "$PGXNTOOL_UPSTREAM" ]; then
-    git -C "$PGXNTOOL_DIR" fetch "$PGXNTOOL_UPSTREAM" 2>/dev/null
-    local_head=$(git -C "$PGXNTOOL_DIR" rev-parse HEAD)
-    upstream_head=$(git -C "$PGXNTOOL_DIR" rev-parse "$PGXNTOOL_UPSTREAM/master" 2>/dev/null || echo "unknown")
-    if [ "$local_head" = "$upstream_head" ]; then
-        echo "pgxntool: in sync with $PGXNTOOL_UPSTREAM/master ($local_head)"
-    else
-        echo "pgxntool: DIVERGED from $PGXNTOOL_UPSTREAM/master"
-        echo "  local:    $local_head"
-        echo "  upstream: $upstream_head"
-        warnings+=("pgxntool: local master diverges from $PGXNTOOL_UPSTREAM/master")
-    fi
-fi
+# 4. Sync local master and the fork from upstream
+#
+# Uses `gh repo sync` -- the CLI equivalent of GitHub's "Sync fork" button
+# -- rather than hand-rolled git fetch/merge/push plumbing. By default it
+# performs a fast-forward-only update and FAILS (non-zero exit) rather than
+# creating a merge commit or rewriting history if a true fast-forward isn't
+# possible. NEVER pass --force to either call below -- that switches gh to
+# a hard reset instead of refusing, which could destroy commits on
+# whichever side gets reset.
+#
+# Two independent syncs per repo, since either can go stale independently
+# of the other (e.g. a prior run updated local but was interrupted before
+# reaching the fork sync, or local already matched upstream from an earlier
+# session so there was never a reason to touch the fork):
+#   1. `gh repo sync` (no destination-repository argument, run from inside
+#      the local clone) updates local master from its upstream parent.
+#   2. `gh repo sync <owner>/<fork>` updates the fork on GitHub directly
+#      (the actual "Sync fork" button equivalent), independent of #1.
+# Both calls resolve their source (the upstream parent) via GitHub's own
+# fork-parent metadata, not our locally-configured remote names -- so this
+# works regardless of what the upstream remote happens to be named locally.
+fork_slug() {
+    local repo_path="$1"
+    git -C "$repo_path" remote get-url origin \
+        | sed -E 's#^(https://github\.com/|git@github\.com:)##; s#\.git$##'
+}
 
-if [ -n "$PGXNTOOL_TEST_UPSTREAM" ]; then
-    git -C "$PGXNTOOL_TEST_DIR" fetch "$PGXNTOOL_TEST_UPSTREAM" 2>/dev/null
-    local_head=$(git -C "$PGXNTOOL_TEST_DIR" rev-parse HEAD)
-    upstream_head=$(git -C "$PGXNTOOL_TEST_DIR" rev-parse "$PGXNTOOL_TEST_UPSTREAM/master" 2>/dev/null || echo "unknown")
-    if [ "$local_head" = "$upstream_head" ]; then
-        echo "pgxntool-test: in sync with $PGXNTOOL_TEST_UPSTREAM/master ($local_head)"
-    else
-        echo "pgxntool-test: DIVERGED from $PGXNTOOL_TEST_UPSTREAM/master"
-        echo "  local:    $local_head"
-        echo "  upstream: $upstream_head"
-        warnings+=("pgxntool-test: local master diverges from $PGXNTOOL_TEST_UPSTREAM/master")
+sync_repo() {
+    local repo_path="$1"
+    local repo_label="$2"
+    local slug output
+
+    if ! slug=$(fork_slug "$repo_path"); then
+        errors+=("$repo_label: could not determine fork slug from 'origin' remote URL")
+        return
     fi
-fi
+
+    echo "$repo_label: syncing local master from upstream (gh repo sync)..."
+    if output=$(cd "$repo_path" && gh repo sync 2>&1); then
+        if [ -n "$output" ]; then
+            echo "$output" | sed 's/^/  /'
+        fi
+    else
+        echo "$output" | sed 's/^/  /'
+        errors+=("$repo_label: gh repo sync (local) failed -- local master may have diverged from upstream in a way that isn't a clean fast-forward; resolve manually")
+        return
+    fi
+
+    echo "$repo_label: syncing fork ($slug) from upstream (gh repo sync $slug)..."
+    if output=$(gh repo sync "$slug" 2>&1); then
+        if [ -n "$output" ]; then
+            echo "$output" | sed 's/^/  /'
+        fi
+    else
+        echo "$output" | sed 's/^/  /'
+        errors+=("$repo_label: gh repo sync (fork $slug) failed -- the fork's master may have diverged from upstream in a way that isn't a clean fast-forward; this is unexpected since the fork should be a pure mirror, and needs manual investigation rather than an automatic overwrite")
+    fi
+}
+
+echo "--- Sync Status ---"
+sync_repo "$PGXNTOOL_DIR" "pgxntool"
+sync_repo "$PGXNTOOL_TEST_DIR" "pgxntool-test"
 echo
 
 # 5. Version checks

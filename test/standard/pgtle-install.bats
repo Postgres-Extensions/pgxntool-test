@@ -206,6 +206,58 @@ setup() {
   psql -X -c "DROP EXTENSION IF EXISTS \"pgxntool-test\";" >/dev/null 2>&1 || true
 }
 
+@test "pgtle-install: print-pgtle falls back to the installed pg_tle version (issue #21)" {
+  # No PGXNTOOL_PGTLE_TARGET_VERSION set: print-pgtle's own Makefile wiring
+  # must fall back to pgtle.sh --get-version to detect the installed pg_tle
+  # version, then select and print that version's directory content.
+  # --get-version's/--get-dir's own decision logic is covered by
+  # 04-pgtle.bats's call_pgtle_function unit tests; this only proves
+  # print-pgtle's DB-fallback path is wired correctly end-to-end.
+  if ! ensure_pgtle_extension; then
+    skip "pg_tle extension cannot be created: $PGTLE_EXTENSION_ERROR"
+  fi
+
+  local installed_version
+  installed_version=$(psql -X -tAc "SELECT extversion FROM pg_extension WHERE extname = 'pg_tle';" | tr -d '[:space:]')
+  local expected_dir
+  expected_dir=$("$TEST_REPO/pgxntool/pgtle.sh" --get-dir "$installed_version")
+
+  # --separate-stderr: pgtle.sh's own progress messages (from the 'pgtle'
+  # prerequisite target) go to stderr, so the default merged-output mode
+  # would pollute $output with them ahead of the actual SQL content.
+  # --no-print-directory: required when make is invoked recursively (this
+  # suite runs under an outer `make test-all`) -- see the dedicated
+  # regression test in 04-pgtle.bats for why.
+  run --separate-stderr make --no-print-directory print-pgtle
+  assert_success
+
+  printf '%s\n' "$output" > "$BATS_TEST_TMPDIR/print-pgtle-dbfallback.out"
+  run diff "$BATS_TEST_TMPDIR/print-pgtle-dbfallback.out" "$expected_dir/pgxntool-test.sql"
+  assert_success
+}
+
+@test "pgtle-install: print-pgtle errors cleanly when pg_tle is not installed and no target version is set" {
+  # With pg_tle genuinely absent and PGXNTOOL_PGTLE_TARGET_VERSION unset,
+  # print-pgtle has no way to pick a directory. It must fail loudly (clear
+  # stderr message, no stdout) rather than silently printing nothing or
+  # picking a wrong directory.
+  #
+  # Drops the shared pg_tle extension - matches the pattern already used by
+  # test-pgtle-versions.bats. Placed last (before final cleanup) so no
+  # later test in this file depends on pg_tle staying installed; every test
+  # here that needs pg_tle calls ensure_pgtle_extension() itself, which
+  # self-heals by recreating it.
+  run psql -X -c "DROP EXTENSION IF EXISTS pg_tle CASCADE;"
+  assert_success
+  reset_pgtle_cache
+
+  # --no-print-directory: see comment in the test above.
+  run --separate-stderr make --no-print-directory print-pgtle
+  assert_failure
+  [ -z "$output" ]
+  assert_contains "$stderr" "pg_tle version not specified and pg_tle is not installed"
+}
+
 @test "pgtle-install: test cleanup" {
   # Clean up test extension
   run psql -X -c "DROP EXTENSION IF EXISTS \"pgxntool-test\";"
