@@ -20,11 +20,11 @@ load ../lib/assertions
 
 setup_file() {
   setup_topdir
-  load_test_env "verify-results-pgtap-script"
+  load_test_env "verify-results-pgtap-script"  # only resolves PGXNREPO; creates no foundation
 }
 
 setup() {
-  load_test_env "verify-results-pgtap-script"
+  load_test_env "verify-results-pgtap-script"  # only resolves PGXNREPO; creates no foundation
   export SCRIPT="$PGXNREPO/verify-results-pgtap.sh"
 
   # Fresh, empty scratch directory per test -- no foundation/TEST_REPO needed.
