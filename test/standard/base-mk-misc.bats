@@ -32,9 +32,9 @@
 #   from `make install`, breaking `CREATE EXTENSION ext VERSION '0.9.6'` even
 #   though the file is tracked in git. No scratch fixture needed: the
 #   template's existing historical file already reproduces this.
-# - check-duplicate-docs warns about repeated DOCS entries (issue #115):
-#   PGXS's `install` refuses to overwrite a file it just installed, so one
-#   duplicated DOCS entry fails the whole install.
+# - check-duplicate-docs warns about DOCS entries sharing a basename (issue
+#   #115): PGXS installs DOCS into one flat directory and refuses to overwrite
+#   a file it just installed, so one collision fails the whole install.
 
 load ../lib/helpers
 
@@ -121,22 +121,28 @@ EOF
 }
 
 @test "check-duplicate-docs warns about a duplicate added after base.mk is included (issue #115)" {
-  # doc/other.html is a template file, so the DOC_DIRS wildcard has already
-  # put it in DOCS; naming it again is the mistake this protects against.
+  # The DOC_DIRS wildcard has already put every template doc/* file in DOCS.
+  # - doc/other.html again: the same entry twice.
+  # - extra_doc/asc_doc.asc: a different path installing to the same name,
+  #   since PGXS flattens DOCS into one directory. The check only compares
+  #   strings, so the file needn't exist.
+  # - doc/adoc%.adoc: unescaped, its `%` would be a $(filter) wildcard
+  #   matching adoc_doc.adoc.
   cat > docs-duplicate-test.mk <<'EOF'
 include pgxntool/base.mk
-DOCS += doc/other.html
+DOCS += doc/other.html extra_doc/asc_doc.asc doc/adoc%.adoc
 EOF
 
   run make -f docs-duplicate-test.mk -n check-duplicate-docs 2>&1
   # A warning, not an error -- a duplicate is worth reporting, but failing the
   # build over it would be worse than the install failure it warns about.
   assert_success
-  assert_contains "$output" "DOCS lists doc/other.html more than once"
+  assert_contains "$output" "DOCS installs other.html more than once (from: doc/other.html doc/other.html)"
+  assert_contains "$output" "DOCS installs asc_doc.asc more than once (from: doc/asc_doc.asc extra_doc/asc_doc.asc)"
   assert_contains "$output" "will not overwrite just-created"
 
-  # Files that aren't duplicated must not be named.
-  assert_not_contains "$output" "DOCS lists doc/asc_doc.asc"
+  # Files that don't collide must not be named.
+  assert_not_contains "$output" "adoc"
 
   rm -f docs-duplicate-test.mk
 }
