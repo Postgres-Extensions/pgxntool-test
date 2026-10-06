@@ -25,11 +25,13 @@ convention in `../ai/CLAUDE.md`:
   for each repo — do not monitor them sequentially.
 - Always use the `/ci` skill (`bash .claude/skills/ci/scripts/monitor-ci.sh`)
   rather than raw `gh run`/`gh pr checks` calls — it derives the owner from
-  the current repo and monitors both. Pass the exact push SHA when
-  available — `gh run list --branch` has a race condition: if two pushes
-  land close together on the same branch (e.g., two Claude sessions pushing
-  in parallel), `--branch` may pick up the wrong run. `--commit SHA` targets
-  the exact push and avoids this.
+  the current repo and monitors both. Pass the exact push SHA(s) as
+  positional arguments when available (see the `/ci` skill for exact
+  usage — the script takes `[repos] [branch] [sha_pgxntool_test]
+  [sha_pgxntool]`, not a `--commit` flag) — `gh run list --branch` has a
+  race condition: if two pushes land close together on the same branch
+  (e.g., two Claude sessions pushing in parallel), `--branch` may pick up
+  the wrong run. An exact SHA targets the push directly and avoids this.
 - **After every monitor run, check the `=== BRANCHES: pgxntool=X
   pgxntool-test=Y ===` line** to verify the right code is under test. If the
   branches don't match what you pushed, cancel the run and re-trigger.
