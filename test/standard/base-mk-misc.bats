@@ -32,6 +32,9 @@
 #   from `make install`, breaking `CREATE EXTENSION ext VERSION '0.9.6'` even
 #   though the file is tracked in git. No scratch fixture needed: the
 #   template's existing historical file already reproduces this.
+# - check-duplicate-docs warns about DOCS entries sharing a basename (issue
+#   #115): PGXS installs DOCS into one flat directory and refuses to overwrite
+#   a file it just installed, so one collision fails the whole install.
 
 load ../lib/helpers
 
@@ -80,6 +83,68 @@ EOF
   run make print-DATA
   assert_success
   assert_contains "$output" "sql/pgxntool-test--0.1.0.sql"
+}
+
+# ----------------------------------------------------------------------------
+# check-duplicate-docs (issue #115)
+# ----------------------------------------------------------------------------
+#
+# base.mk checks for duplicate DOCS entries from a recipe rather than at parse
+# time, because an extension's own Makefile appends to DOCS *after* it
+# includes base.mk -- a parse-time check in base.mk structurally cannot see
+# those additions, and they're exactly the case worth protecting against. So
+# the duplicate below is introduced by a post-include `DOCS +=` in a throwaway
+# Makefile, mirroring what a real extension does; a duplicate baked into
+# base.mk's own assembly would not exercise the same code path.
+
+@test "all depends on check-duplicate-docs (issue #115)" {
+  # Proves the check actually runs before anything is installed: PGXS's
+  # `install` depends on `all`. A structural check rather than a real
+  # `make install` run, for the same reason as the installcheck/install edge
+  # in make-test.bats -- an ordering that happens to hold in one run isn't
+  # evidence the dependency exists.
+  run make -p -n check-duplicate-docs 2>&1
+  assert_success
+
+  local prereq_line
+  prereq_line=$(echo "$output" | awk '/^all:/{print; exit}')
+  [ -n "$prereq_line" ] || error "all rule not found in 'make -p' database dump"
+
+  echo "$prereq_line" | tr ' ' '\n' | grep -qx check-duplicate-docs || \
+    error "all's parsed prerequisite list does not include check-duplicate-docs: $prereq_line"
+}
+
+@test "check-duplicate-docs stays quiet on the template's own DOCS (issue #115)" {
+  run make -n check-duplicate-docs 2>&1
+  assert_success
+  assert_not_contains "$output" "more than once"
+}
+
+@test "check-duplicate-docs warns about a duplicate added after base.mk is included (issue #115)" {
+  # The DOC_DIRS wildcard has already put every template doc/* file in DOCS.
+  # - doc/other.html again: the same entry twice.
+  # - extra_doc/asc_doc.asc: a different path installing to the same name,
+  #   since PGXS flattens DOCS into one directory. The check only compares
+  #   strings, so the file needn't exist.
+  # - doc/adoc%.adoc: unescaped, its `%` would be a $(filter) wildcard
+  #   matching adoc_doc.adoc.
+  cat > docs-duplicate-test.mk <<'EOF'
+include pgxntool/base.mk
+DOCS += doc/other.html extra_doc/asc_doc.asc doc/adoc%.adoc
+EOF
+
+  run make -f docs-duplicate-test.mk -n check-duplicate-docs 2>&1
+  # A warning, not an error -- a duplicate is worth reporting, but failing the
+  # build over it would be worse than the install failure it warns about.
+  assert_success
+  assert_contains "$output" "DOCS installs other.html more than once (from: doc/other.html doc/other.html)"
+  assert_contains "$output" "DOCS installs asc_doc.asc more than once (from: doc/asc_doc.asc extra_doc/asc_doc.asc)"
+  assert_contains "$output" "will not overwrite just-created"
+
+  # Files that don't collide must not be named.
+  assert_not_contains "$output" "adoc"
+
+  rm -f docs-duplicate-test.mk
 }
 
 @test "bin/version prints a stamped version number" {
