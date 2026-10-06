@@ -6,10 +6,7 @@
 # placeholder alias (PGXNTOOL_POST_TAG_VERSION, default "stable") so ongoing
 # development after a release doesn't silently regenerate and overwrite the
 # just-released version's SQL file. It's a separate, explicitly-invoked
-# target -- NOT wired into `tag`/`dist` -- because both of those run
-# routinely outside of an actual release (including from this project's own
-# test suite) and `dist` is documented/tested to leave the repository clean;
-# see base.mk's comment above the target definition for the full reasoning.
+# target -- NOT wired into `tag`/`dist`.
 #
 # Split by what each layer owns (see CLAUDE.md "Test Each Layer for What It
 # Actually Owns"):
@@ -117,14 +114,35 @@ default_version = 'stable' # bare
 EOF
 }
 
-@test "bump-default-version.sh: sed metacharacters in the new version are written literally" {
+@test "bump-default-version.sh: accepts only letters, digits, '.' and '-' in the new version" {
   local v
-  for v in 'a/b' 'a&b' 'a\b'; do
+  for v in stable 1.2.3 1.0-rc1 Stable-RC.1 A9; do
     echo "default_version = '1.0'" > "$SCRATCH/ext.control"
     run "$SCRIPT" "$v" "$SCRATCH/ext.control"
     assert_success
     assert_file_content "$SCRATCH/ext.control" <<<"default_version = '$v'"
   done
+
+  for v in 'a/b' 'a&b' 'a\b' 'a b' 'a_b' "it's" 'a"b' 'a;b' '1.0+x' 'a'$'\n''b'; do
+    echo "default_version = '1.0'" > "$SCRATCH/ext.control"
+    run "$SCRIPT" "$v" "$SCRATCH/ext.control"
+    assert_failure
+    assert_contains "$output" "Invalid version"
+    assert_file_content "$SCRATCH/ext.control" <<<"default_version = '1.0'"
+  done
+}
+
+@test "bump-default-version.sh: a failing grep reports grep's stderr and exit code" {
+  local fakebin="$BATS_TEST_TMPDIR/fakebin"
+  mkdir -p "$fakebin"
+  printf '#!/bin/sh\necho "fake grep: boom" >&2\nexit 2\n' > "$fakebin/grep"
+  chmod +x "$fakebin/grep"
+  echo "default_version = '1.0'" > "$SCRATCH/ext.control"
+
+  PATH="$fakebin:$PATH" run "$SCRIPT" stable "$SCRATCH/ext.control"
+  assert_failure
+  assert_contains "$output" "grep failed (exit 2)"
+  assert_contains "$output" "fake grep: boom"
 }
 
 @test "bump-default-version.sh: updates multiple control files in one invocation" {
