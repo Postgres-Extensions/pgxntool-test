@@ -169,11 +169,13 @@ EOF
   run "$SCRIPT" stable "$SCRATCH/no-version.control"
   assert_failure
   assert_contains "$output" "Expected exactly one default_version line"
+  assert_contains "$output" "found 0"
 
   printf "default_version = '1.0.0'\ndefault_version = '2.0.0'\n" > "$SCRATCH/dup.control"
   run "$SCRIPT" stable "$SCRATCH/dup.control"
   assert_failure
   assert_contains "$output" "Expected exactly one default_version line"
+  assert_contains "$output" "found 2"
 
   run "$SCRIPT" stable
   assert_failure
