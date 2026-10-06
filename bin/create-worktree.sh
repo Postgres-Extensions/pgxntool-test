@@ -42,6 +42,6 @@ echo "    └── pgxntool-test/"
 
 # Resolve to an absolute path since WORKTREE_DIR above is relative to
 # SCRIPT_DIR and not safe to paste into a `cd` from an arbitrary shell.
-absPath="$(cd "$WORKTREE_DIR" && pwd)"
+ABS_PATH="$(cd "$WORKTREE_DIR" && pwd)"
 echo
-echo "Absolute path: $absPath"
+echo "Absolute path: $ABS_PATH"
