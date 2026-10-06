@@ -11,10 +11,15 @@
 # - unique per-directory database naming (REGRESS_DBNAME)
 # - installcheck always runs after install, even when pulled in indirectly
 #   (issue #79)
+# - PGXNTOOL_ENABLE_FS_INSTALL can disable the install prerequisite entirely,
+#   for "existing mode"/pg_tle-style testing (issues #55, #90)
+# - PGXNTOOL_ENABLE_PGXN_INSTALL can independently disable the pgtap
+#   dependency's own `pgxn install --sudo` auto-install
 # - check-stale-expected catches orphaned test/expected/*.out files (issue #14)
 # - `make test` exits non-zero on a real regression.diffs mismatch (issue #49)
-# - verify-results blocks `make results` when tests are failing, detects
-#   pgtap failures, and can be disabled
+# - verify-results blocks `make results` when tests are failing, lets a
+#   brand-new test's first expected output through (issue #119), and can be
+#   disabled. Its own pass/fail logic lives in verify-results-pgtap-script.bats
 
 load ../lib/helpers
 
@@ -170,27 +175,158 @@ EOF
   prereq_line=$(echo "$output" | awk '/^installcheck:/{print; exit}')
   [ -n "$prereq_line" ] || error "installcheck rule not found in 'make -p' database dump"
 
-  echo "$prereq_line" | grep -qw install || \
+  # Split on whitespace and match the exact "install" token -- grep -w alone
+  # would also match inside "test/install/schedule" (PGXNTOOL_ENABLE_TEST_INSTALL's
+  # generated schedule file path), which is word-bounded by slashes too.
+  echo "$prereq_line" | tr ' ' '\n' | grep -qx install || \
     error "installcheck's parsed prerequisite list does not include 'install': $prereq_line"
 }
 
-@test "make test succeeds from a genuinely uninstalled state (issue #79)" {
+@test "make test fails with PGXNTOOL_ENABLE_FS_INSTALL=no, but succeeds by default, from a genuinely uninstalled tree (issues #55, #79)" {
   skip_if_no_postgres
 
-  # The `make -p` test above is the primary proof for this issue (the
-  # dependency edge genuinely exists in the parsed makefile). This test is a
-  # complementary real-world sanity check of the whole pipeline: on a
-  # genuinely uninstalled tree, does pg_regress actually find the extension
-  # already installed by the time it runs? `make uninstall` forces that
-  # precondition regardless of what any earlier test in this file already
-  # installed on the shared PostgreSQL instance -- the original bug was
-  # historically masked in exactly that way.
+  # Shares one `make uninstall` for issue #79's original regression check,
+  # issue #55's proof that install doesn't happen as a side effect (below),
+  # and the dry-run recipe check further below, instead of each uninstalling
+  # separately.
   run make uninstall
   assert_success
 
+  # `install` is declared .PHONY (via PGXS's Makefile.global, pulled in by
+  # pgxs.mk's include chain), so its recipe would show in a dry run whenever
+  # it remains a prerequisite regardless of what's on disk -- checking this
+  # against a genuinely uninstalled tree (the uninstall above) means the
+  # result can't be dismissed as coincidental with on-disk state either way.
+  run make -n test PGXNTOOL_ENABLE_FS_INSTALL=no
+  assert_success
+  assert_not_contains "$output" "install -c -m 644"
+
+  # issue #55: with FS install disabled, nothing reinstalls the extension as
+  # a side effect, so pg_regress runs against a genuinely uninstalled tree
+  # and fails. The structural test further below already proves the
+  # `installcheck: install` edge is genuinely gone; this proves it matters.
+  run make test PGXNTOOL_ENABLE_FS_INSTALL=no
+  assert_failure
+  assert_contains "$output" "does not exist"
+
+  # issue #79: by default, does pg_regress actually find the extension
+  # already installed by the time it runs? The `make -p` test above is the
+  # primary proof (the dependency edge genuinely exists in the parsed
+  # makefile); this is the complementary real-world sanity check of the
+  # whole pipeline. The original bug was historically masked because some
+  # earlier test had already installed the extension on the shared
+  # PostgreSQL instance -- the uninstall above forces the precondition
+  # regardless.
   run make test
   assert_success
   assert_not_contains "$output" "does not exist"
+}
+
+# ============================================================================
+# install/installcheck can skip filesystem install (issues #55, #90)
+# ============================================================================
+#
+# `test`/`verify-results` always filesystem-installed the extension via
+# PGXS's `install`, and `installcheck` always depended on `install` (the
+# issue #79 fix, tested above) -- with no way to disable either. That defeats
+# "existing mode" testing, where the extension under test was deployed some
+# other way (e.g. a pg_tle registration, or a real pg_upgrade) and the whole
+# point is to prove that other deployment path works -- filesystem-installing
+# as a side effect defeats it. PGXNTOOL_ENABLE_FS_INSTALL=no removes both the
+# TEST_DEPS `install` entry and the `installcheck: install` edge.
+
+@test "PGXNTOOL_ENABLE_FS_INSTALL=no removes install from installcheck's parsed prerequisite list" {
+  # Same structural technique as the issue #79 test above, inverted: prove
+  # the edge is genuinely gone, not just that a real run happened to succeed
+  # regardless of scheduling order.
+  run make -p -n installcheck PGXNTOOL_ENABLE_FS_INSTALL=no
+  assert_success
+
+  local prereq_line
+  prereq_line=$(echo "$output" | awk '/^installcheck:/{print; exit}')
+  [ -n "$prereq_line" ] || error "installcheck rule not found in 'make -p' database dump"
+
+  # Split on whitespace and match the exact "install" token -- grep -w would
+  # false-positive on the unrelated "test/install/schedule" path (PGXNTOOL_ENABLE_TEST_INSTALL's
+  # generated schedule file), which is also a word-bounded "install" once
+  # surrounded by slashes.
+  if echo "$prereq_line" | tr ' ' '\n' | grep -qx install; then
+    error "installcheck's parsed prerequisite list still includes 'install' with PGXNTOOL_ENABLE_FS_INSTALL=no: $prereq_line"
+  fi
+}
+
+@test "PGXNTOOL_ENABLE_FS_INSTALL rejects invalid values" {
+  run make print-PGXNTOOL_ENABLE_FS_INSTALL PGXNTOOL_ENABLE_FS_INSTALL=bogus
+  assert_failure
+  assert_contains "$output" "PGXNTOOL_ENABLE_FS_INSTALL must be"
+}
+
+@test "make test succeeds with PGXNTOOL_ENABLE_FS_INSTALL=no when the extension is already installed" {
+  skip_if_no_postgres
+
+  # Stands in for "existing mode": the extension is already deployed (here,
+  # via a normal install) before test/installcheck ever runs, so disabling
+  # the FS install prerequisite shouldn't stop the suite from passing.
+  # State is already installed at this point, but the explicit install below
+  # documents the precondition this test actually relies on.
+  run make install
+  assert_success
+
+  run make test PGXNTOOL_ENABLE_FS_INSTALL=no
+  assert_success
+}
+
+# ----------------------------------------------------------------------------
+# pgtap auto-install can be disabled independently (PGXNTOOL_ENABLE_PGXN_INSTALL)
+# ----------------------------------------------------------------------------
+#
+# `installcheck` also auto-installs the pgtap dependency via `pgxn install
+# pgtap --sudo` when it isn't already filesystem-installed -- itself a
+# filesystem-install side effect, and the same problem
+# PGXNTOOL_ENABLE_FS_INSTALL solves for the extension under test.
+# PGXNTOOL_ENABLE_PGXN_INSTALL defaults to following PGXNTOOL_ENABLE_FS_INSTALL,
+# but can be set independently.
+
+@test "PGXNTOOL_ENABLE_PGXN_INSTALL defaults to following PGXNTOOL_ENABLE_FS_INSTALL" {
+  run make print-PGXNTOOL_ENABLE_PGXN_INSTALL
+  assert_success
+  assert_contains "$output" 'set to "yes"'
+
+  run make print-PGXNTOOL_ENABLE_PGXN_INSTALL PGXNTOOL_ENABLE_FS_INSTALL=no
+  assert_success
+  assert_contains "$output" 'set to "no"'
+}
+
+@test "PGXNTOOL_ENABLE_PGXN_INSTALL can be set independently of PGXNTOOL_ENABLE_FS_INSTALL" {
+  run make print-PGXNTOOL_ENABLE_PGXN_INSTALL PGXNTOOL_ENABLE_FS_INSTALL=no PGXNTOOL_ENABLE_PGXN_INSTALL=yes
+  assert_success
+  assert_contains "$output" 'set to "yes"'
+}
+
+@test "PGXNTOOL_ENABLE_PGXN_INSTALL=no removes pgtap's recipe from a dry-run installcheck" {
+  # pgtap's file-check target ($(DESTDIR)$(datadir)/extension/pgtap.control)
+  # is already satisfied on this machine (pgtap is genuinely installed), so
+  # a plain dry-run never shows the "pgxn install" recipe regardless of this
+  # variable -- it wouldn't prove anything either way. Pointing DESTDIR at a
+  # nonexistent path makes that file-check target genuinely unsatisfied,
+  # forcing the recipe to appear in a *dry* run (nothing is actually
+  # installed there -- -n never executes it) -- that's what actually proves
+  # PGXNTOOL_ENABLE_PGXN_INSTALL gates it.
+  local fake_destdir="$BATS_TEST_TMPDIR/fake-destdir"
+
+  run make -n installcheck "DESTDIR=$fake_destdir"
+  assert_success
+  assert_contains "$output" "pgxn install pgtap --sudo"
+
+  run make -n installcheck "DESTDIR=$fake_destdir" PGXNTOOL_ENABLE_PGXN_INSTALL=no
+  assert_success
+  assert_not_contains "$output" "pgxn install pgtap --sudo"
+}
+
+@test "PGXNTOOL_ENABLE_PGXN_INSTALL rejects invalid values" {
+  run make print-PGXNTOOL_ENABLE_PGXN_INSTALL PGXNTOOL_ENABLE_PGXN_INSTALL=bogus
+  assert_failure
+  assert_contains "$output" "PGXNTOOL_ENABLE_PGXN_INSTALL must be"
 }
 
 # Test: test-build must gate the full suite, not run after it (issue #108)
@@ -529,9 +665,42 @@ EOF
   assert_success
 }
 
-@test "verify-results detects pgtap failures in result files" {
+@test "make results seeds the first expected output for a brand-new test (issue #119)" {
   skip_if_no_postgres
 
+  # base.mk touches an empty test/expected/<name>.out for any test/sql/*.sql
+  # that lacks one (pg_regress aborts on a missing expected file), so
+  # pg_regress reports a difference no matter how clean the new test's actual
+  # output is. This is the one case that needs a real pg_regress run: it
+  # proves the diff pg_regress writes against that placeholder really is the
+  # shape verify-results-pgtap.sh treats as "no baseline yet" rather than as
+  # a failure. The script's own classification is covered cheaply in
+  # verify-results-pgtap-script.bats.
+  cp test/sql/pgxntool-test.sql test/sql/brand_new.sql
+
+  run make results
+  assert_success
+  # The NOTE proves the no-baseline branch is what let this through, rather
+  # than the file appearing for some other reason.
+  assert_contains "$output" "no expected output yet"
+  assert_contains "$output" "brand_new.out"
+  assert_file_exists "test/expected/brand_new.out"
+
+  # The seeded baseline is what the test actually produces.
+  run make test
+  assert_success
+
+  # results/ too: `make results` blesses every results/*.out into expected/,
+  # so a leftover here would reappear as an orphan for check-stale-expected.
+  rm -f test/sql/brand_new.sql test/expected/brand_new.out test/results/brand_new.out
+}
+
+@test "verify-results propagates a pgtap failure the script detects" {
+  skip_if_no_postgres
+
+  # Wiring only -- that `make verify-results` really invokes the script and
+  # surfaces its failure. Which pgtap output counts as a failure (TODO
+  # exclusion, plan mismatches) is decided by the script and tested there.
   mkdir -p test/results
   cat > test/results/pgtap_fail.out <<'EOF'
 1..2
@@ -546,51 +715,18 @@ EOF
   rm -f test/results/pgtap_fail.out
 }
 
-@test "verify-results ignores pgtap TODO failures" {
-  skip_if_no_postgres
-
-  mkdir -p test/results
-  cat > test/results/pgtap_todo.out <<'EOF'
-1..1
-not ok 1 - known issue # TODO fix later
-EOF
-
-  run make verify-results
-  assert_success
-
-  rm -f test/results/pgtap_todo.out
-}
-
-@test "verify-results detects pgtap plan mismatch" {
-  skip_if_no_postgres
-
-  mkdir -p test/results
-  cat > test/results/pgtap_plan.out <<'EOF'
-1..3
-ok 1 - test one
-ok 2 - test two
-# Looks like you planned 3 tests but ran 2
-EOF
-
-  run make verify-results
-  assert_failure
-  assert_contains "$output" "pgtap plan mismatch"
-
-  rm -f test/results/pgtap_plan.out
-}
-
 # ============================================================================
-# build-results (issue #108)
+# results-build (issue #108)
 # ============================================================================
 #
-# build-results mirrors `make results`, but for test-build's separate
+# results-build mirrors `make results`, but for test-build's separate
 # pg_regress pass: bless test/build/'s actual output as the new expected
 # output. Unlike `make results`, it refuses to bless any file whose actual
-# output contains an "ERROR:" line -- see base.mk's build-results comment
+# output contains an "ERROR:" line -- see base.mk's results-build comment
 # for why that's essential (blessing an errored build as the new baseline
 # would defeat the entire point of test-build gating the main suite).
 
-@test "build-results refreshes a stale test/build/expected/*.out" {
+@test "results-build refreshes a stale test/build/expected/*.out" {
   skip_if_no_postgres
 
   # Corrupt the committed expected output (stale, not a real build break).
@@ -599,16 +735,16 @@ EOF
   run git status --porcelain test/build/expected/build_check.out
   [ -n "$output" ] || error "corruption didn't register as a git modification"
 
-  run make build-results
+  run make results-build
   assert_success
 
   # The template's build_check.sql is deterministic, so a correct refresh
   # must land back on exactly the committed content.
   run git status --porcelain test/build/expected/build_check.out
-  [ -z "$output" ] || error "build_check.out doesn't match the committed baseline after build-results: $output"
+  [ -z "$output" ] || error "build_check.out doesn't match the committed baseline after results-build: $output"
 }
 
-@test "build-results skips a file whose actual output contains ERROR:, but still refreshes clean files" {
+@test "results-build skips a file whose actual output contains ERROR:, but still refreshes clean files" {
   skip_if_no_postgres
 
   # Re-corrupt build_check.out (clean, no ERROR) so this test can prove it
@@ -619,7 +755,7 @@ EOF
   # Force simple_build_test.sql to error.
   echo "SELECT * FROM definitely_nonexistent_table;" >> test/build/simple_build_test.sql
 
-  run make build-results
+  run make results-build
   assert_failure
   assert_contains "$output" "simple_build_test.out"
   assert_contains "$output" "cp test/build/results/simple_build_test.out test/build/expected/simple_build_test.out"

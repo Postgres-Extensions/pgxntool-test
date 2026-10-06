@@ -25,11 +25,13 @@ convention in `../ai/CLAUDE.md`:
   for each repo — do not monitor them sequentially.
 - Always use the `/ci` skill (`bash .claude/skills/ci/scripts/monitor-ci.sh`)
   rather than raw `gh run`/`gh pr checks` calls — it derives the owner from
-  the current repo and monitors both. Pass the exact push SHA when
-  available — `gh run list --branch` has a race condition: if two pushes
-  land close together on the same branch (e.g., two Claude sessions pushing
-  in parallel), `--branch` may pick up the wrong run. `--commit SHA` targets
-  the exact push and avoids this.
+  the current repo and monitors both. Pass the exact push SHA(s) as
+  positional arguments when available (see the `/ci` skill for exact
+  usage — the script takes `[repos] [branch] [sha_pgxntool_test]
+  [sha_pgxntool]`, not a `--commit` flag) — `gh run list --branch` has a
+  race condition: if two pushes land close together on the same branch
+  (e.g., two Claude sessions pushing in parallel), `--branch` may pick up
+  the wrong run. An exact SHA targets the push directly and avoids this.
 - **After every monitor run, check the `=== BRANCHES: pgxntool=X
   pgxntool-test=Y ===` line** to verify the right code is under test. If the
   branches don't match what you pushed, cancel the run and re-trigger.
@@ -64,6 +66,20 @@ let them decide when to commit.
 **This project uses a GitHub PR workflow, not direct commits to master.** The `/commit` skill's two-phase cross-reference process (commit pgxntool, capture its hash, commit pgxntool-test referencing it) was designed for an earlier direct-commit era and still applies to *composing a PR branch's own commits* before merge — but actually merging a PR happens via the GitHub website, by the user, outside AI control. Claude never commits directly to master and does not control when or how a PR lands, with one narrow, safety-gated exception: `crossref-audit`'s Step 4 may amend and force-push a single tip-of-master commit to add a missing cross-reference, under the specific conditions documented there (never more than one commit, never at or before the last release tag, content-diff verified empty before pushing).
 
 Because of that, whether a paired PR's cross-reference actually made it onto master can only be verified *after the fact*, once both sides are already merged — see `crossref-audit` below.
+
+### Merge Order for Paired PRs
+
+The safe order depends on which direction the pairing changes behavior. Once a pgxntool-test PR has no paired pgxntool branch (matched by branch name **and** account — see README.md's CI section), its CI runs against pgxntool master directly, which is the mechanism behind both cases below.
+
+**Addition (pgxntool adds behavior, pgxntool-test adds coverage for it): merge the pgxntool PR first.** If the pgxntool-test PR merges first, its new tests reference something that doesn't exist on pgxntool master yet — breaking CI for every *other*, unrelated pgxntool-test PR in that window, with no obvious link back to the missing pgxntool PR.
+
+*Evidence*: pgxntool-test PR #79 (tests for `check-test-install-error-stop.sh`, `build-results`, and `test-build` ordering) merged 2026-09-08, eight days before its paired pgxntool PR #109 — which actually added `test/bin/check-test-install-error-stop.sh` and the `test-build`/`installcheck` gating those tests exercise — merged 2026-09-16. In that window, unrelated pgxntool-test PRs with no paired pgxntool branch (e.g. #84, #85) failed CI with `check-test-install-error-stop.sh: No such file or directory`, since the script wasn't on pgxntool master yet.
+
+**Removal/rename (pgxntool removes or renames something pgxntool-test's *existing* tests already reference): no unilateral order is safe.** pgxntool-first leaves pgxntool-test's still-old-referencing master broken until the test-side update lands; pgxntool-test-first (with tests already updated to the new name) breaks the same way against pgxntool's still-old master. Minimize the window instead: land both PRs as close to back-to-back as practical, or keep the old name/behavior working alongside the new one (a deprecation window) so neither master ever breaks — and flag the sequencing to the maintainer rather than picking an order unprompted.
+
+*Evidence*: pgxntool PR #93 (renamed 5 internal `PGXNTOOL_*` variables to `_PGXNTOOL_*`) and its paired pgxntool-test PR #72 merged same-day, ~2h8m apart (2026-09-08) — no unrelated pgxntool-test PR happened to run CI in that gap, but the rename still broke something else with no transition period: pgxntool PR #95 (open, unrelated), whose own new code referenced the pre-rename `PGXNTOOL_CONTROL_FILES` name, broke the moment its branch merged master and picked up #93's rename (fixed in commit `42e0903`). pgxntool #123 (renames `build-results` to `results-build`) and its paired pgxntool-test #88 are open as of this writing, in the same category — an unresolved case, not a precedent to copy blindly.
+
+If a pgxntool-test PR's tests only cover pgxntool behavior that is unchanged on pgxntool's master, order doesn't matter.
 
 ### End of Each Round: Check for Missing Cross-References
 
@@ -231,7 +247,14 @@ section once resolved.
    a behavior change, call it out in `HISTORY.asc` too. (For other files
    that are genuinely just internal dev documentation with no bearing on
    consumer projects, doc-only changes don't need a `HISTORY.asc` entry.)
-7. Everything else is internal by default unless there's a specific
+7. **`../pgxntool/POSTGRES-NOTES.asc` and `../pgxntool/CLAUDE-POSTGRES.md`
+   ship to consumers too, so review them for accuracy — but they never
+   generate `HISTORY.asc` entries.** They deliberately hold only guidance
+   about PostgreSQL itself, not about pgxntool, so nothing in them can
+   describe a pgxntool behavior change. If a claim in either one turns out
+   to be about pgxntool after all, that's the finding: it belongs in
+   `README.asc`/`CLAUDE.md` instead.
+8. Everything else is internal by default unless there's a specific
    indication otherwise.
 
 ## Running Skills and Scripts
