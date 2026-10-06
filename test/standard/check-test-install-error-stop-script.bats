@@ -4,7 +4,7 @@
 #
 # These tests exercise test/bin/check-test-install-error-stop.sh directly
 # against a bare scratch directory -- no foundation environment, no `make`,
-# no PostgreSQL. The rule: a file fails only if it neither includes
+# and no PostgreSQL except the one psql.sql test at the end. The rule: a file fails only if it neither includes
 # test/pgxntool/psql.sql nor has any `\set`/`\unset ON_ERROR_STOP` command,
 # whatever the value or order.
 #
@@ -130,4 +130,14 @@ setup() {
 
   run "$SCRIPT" "$TESTDIR" extra
   assert_failure
+}
+
+# Guards the assumption check-test-install-error-stop.sh makes when it accepts
+# files that include psql.sql. -X keeps ~/.psqlrc from masking a regression.
+@test "test/pgxntool/psql.sql makes psql stop on error" {
+  skip_if_no_postgres
+
+  run psql -X -f "$PGXNREPO/test/pgxntool/psql.sql" -c 'SELECT 1/0' -c '\echo SENTINEL'
+  assert_failure
+  [[ "$output" != *SENTINEL* ]]
 }
