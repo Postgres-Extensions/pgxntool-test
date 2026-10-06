@@ -265,6 +265,7 @@ Tests set these automatically (from `tests/helpers.bash`):
 **From `assertions.bash`**:
 - `assert_file_exists()` - Check file exists
 - `assert_files_exist()` - Check multiple files (takes array name)
+- `assert_file_content <file>` - Exact file contents from a stdin heredoc, diff on failure. Use it instead of `run cat <file>` + `assert_contains` whenever the whole file is known.
 - `assert_success`, `assert_failure` - BATS built-ins
 
 **From `dist-files.bash`**:

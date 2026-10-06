@@ -154,6 +154,27 @@ assert_contains() {
   fi
 }
 
+# Assert that a file's contents exactly equal the expected text on stdin
+# Usage: assert_file_content <file> <<'EOF'
+#        <expected contents>
+#        EOF
+# Use this rather than `run cat <file>` + assert_contains whenever the whole
+# file is known. Shows a unified diff (expected vs. actual) on mismatch.
+assert_file_content() {
+  local file=$1
+  local diff_output line
+  if [ ! -f "$file" ]; then
+    error "assert_file_content: file not found: $file"
+    return
+  fi
+  if ! diff_output=$(diff -u --label expected --label "$file" - "$file"); then
+    while IFS= read -r line; do
+      out "$line"
+    done <<< "$diff_output"
+    error "assert_file_content failed (see diff above)"
+  fi
+}
+
 # Assert that haystack does NOT contain needle as a literal substring
 # Usage: assert_not_contains "$output" "unexpected substring"
 assert_not_contains() {
