@@ -48,48 +48,46 @@ setup() {
   mkdir -p "$SCRATCH"
 }
 
-@test "bump-default-version.sh: rewrites a single-quoted default_version, preserving a trailing comment and file mode" {
-  cat > "$SCRATCH/ext.control" <<'EOF'
-comment = 'my extension'
-default_version = '2.5.0' # Test comment (should be unchanged)
-relocatable = false
-EOF
-  # Neither the usual umask default (644) nor mktemp's 600
+@test "bump-default-version.sh: rewrites only default_version's value, leaving other occurrences of the old version and the file mode alone" {
+  cat > "$SCRATCH/ext.control" <<'EOT'
+# Released as 2.5.0
+comment = 'Supersedes 2.5.0 of the old extension'
+#default_version = '2.5.0'
+default_version = '2.5.0' # 2.5.0 in a trailing comment (should be unchanged)
+module_pathname = '$libdir/ext-2.5.0'
+EOT
+  # Non-default mode (not mktemp's 600 or the 644 umask default) so the check below catches a rewrite that resets it
   chmod 664 "$SCRATCH/ext.control"
 
   run "$SCRIPT" stable "$SCRATCH/ext.control"
   assert_success
 
-  assert_file_content "$SCRATCH/ext.control" <<'EOF'
-comment = 'my extension'
-default_version = 'stable' # Test comment (should be unchanged)
-relocatable = false
-EOF
+  assert_file_content "$SCRATCH/ext.control" <<'EOT'
+# Released as 2.5.0
+comment = 'Supersedes 2.5.0 of the old extension'
+#default_version = '2.5.0'
+default_version = 'stable' # 2.5.0 in a trailing comment (should be unchanged)
+module_pathname = '$libdir/ext-2.5.0'
+EOT
 
   local mode
   mode=$(stat -c %a "$SCRATCH/ext.control" 2>/dev/null || stat -f %Lp "$SCRATCH/ext.control")
   [ "$mode" = 664 ] || error "Expected mode 664 after bump, got $mode"
 }
 
-@test "bump-default-version.sh: rewrites only default_version's value when the old version appears elsewhere" {
-  cat > "$SCRATCH/ext.control" <<'EOF'
-# Released as 2.5.0
-comment = 'Supersedes 2.5.0 of the old extension'
-#default_version = '2.5.0'
-default_version = '2.5.0' # 2.5.0 in a trailing comment (should be unchanged)
-module_pathname = '$libdir/ext-2.5.0'
-EOF
+@test "assert_file_content: passes on matching content, fails and prints a diff on mismatch" {
+  printf 'a\nb\n' > "$SCRATCH/f"
+  local diff_text rc
 
-  run "$SCRIPT" stable "$SCRATCH/ext.control"
-  assert_success
+  rc=0
+  assert_file_content "$SCRATCH/f" <<<$'a\nb' || rc=$?
+  [ "$rc" -eq 0 ] || error "Expected match to pass, got status $rc"
 
-  assert_file_content "$SCRATCH/ext.control" <<'EOF'
-# Released as 2.5.0
-comment = 'Supersedes 2.5.0 of the old extension'
-#default_version = '2.5.0'
-default_version = 'stable' # 2.5.0 in a trailing comment (should be unchanged)
-module_pathname = '$libdir/ext-2.5.0'
-EOF
+  # out() writes to fd 3; fold it into stdout to capture the diff
+  rc=0
+  diff_text=$(assert_file_content "$SCRATCH/f" 3>&1 <<<$'a\nc') || rc=$?
+  [ "$rc" -ne 0 ] || error "Expected mismatch to fail, got status 0"
+  [[ "$diff_text" == *'# -c'* && "$diff_text" == *'# +b'* ]] || error "Expected diff lines -c/+b in: $diff_text"
 }
 
 @test "bump-default-version.sh: rewrites a double-quoted default_version, normalizing to single quotes" {
