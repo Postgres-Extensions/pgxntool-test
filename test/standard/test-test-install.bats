@@ -46,6 +46,36 @@ setup() {
   assert_success
 }
 
+@test "install schedule orders files by name, not filesystem/creation order (issue #111)" {
+  # glob(3)'s default (most platforms/libcs) already returns alphabetical
+  # order, so this alone can't prove $(sort) is doing anything on every
+  # possible platform -- it only pins down the documented, going-forward
+  # contract. The direct check that pgxntool actually wires in $(sort),
+  # independent of what any given platform's wildcard happens to return, is
+  # the grep below.
+  run grep -E '^TEST_INSTALL_SQL_FILES = \$\(sort ' pgxntool/base.mk
+  assert_success
+
+  # Created zzz before aaa: if the schedule preserved wildcard's incidental
+  # order instead of sorting, aaa would come out after zzz here.
+  echo "-- order test" > test/install/zzz_created_first.sql
+  echo "-- order test" > test/install/aaa_created_second.sql
+
+  run make test/install/schedule
+  assert_success
+
+  local aaa_line zzz_line
+  aaa_line=$(grep -n "aaa_created_second" test/install/schedule | cut -d: -f1)
+  zzz_line=$(grep -n "zzz_created_first" test/install/schedule | cut -d: -f1)
+
+  [ -n "$aaa_line" ]
+  [ -n "$zzz_line" ]
+  [ "$aaa_line" -lt "$zzz_line" ]
+
+  # Cleanup so later tests in this file see only the template's marker file
+  rm -f test/install/zzz_created_first.sql test/install/aaa_created_second.sql
+}
+
 @test "install marker state persists into main test suite" {
   skip_if_no_postgres
 
