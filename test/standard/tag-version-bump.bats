@@ -217,6 +217,18 @@ setup_foundation_repo() {
   assert_contains "$output" "bump-default-version.sh dev-next pgxntool-test.control"
 }
 
+@test "make -n tag / post-tag-version-bump: both run the tree-is-clean check" {
+  setup_foundation_repo
+
+  run make -n tag
+  assert_success
+  assert_contains "$output" "git status --porcelain"
+
+  run make -n post-tag-version-bump
+  assert_success
+  assert_contains "$output" "git status --porcelain"
+}
+
 # ============================================================================
 # `post-tag-version-bump`: real execution, stub script (proves invocation, not behavior)
 # ============================================================================
