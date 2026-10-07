@@ -71,6 +71,7 @@ internal _PGXNTOOL_EXTENSIONS
 internal _PGXNTOOL_INSTALL_SCHEDULE
 internal _PGXNTOOL_POST_TAG_VERSION_BUMP_SCRIPT
 internal _pgxntool_docs_named
+internal _pgxntool_validate_choice
 legacy   pgxntool-sync-local
 legacy   pgxntool-sync-local-master
 legacy   pgxntool-sync-master

@@ -8,8 +8,9 @@
 # decision. Needs pg_config (for PGXS) but no foundation env or Postgres.
 #
 # The list comes from make's own database (`make -p`), keeping each variable
-# whose "# makefile (from 'pgxntool/<file>.mk', ...)" origin line points into
-# pgxntool. That origin is the variable's *last* assignment, so a variable
+# whose origin line ("# makefile (from 'pgxntool/<file>.mk', ...)", or
+# "# 'override' directive (from ...)") points into pgxntool. That origin is
+# the variable's *last* assignment, so a variable
 # pgxntool sets but PGXS later appends to (REGRESS_OPTS) shows up as PGXS's and
 # isn't listed. Variables that only ever arrive on a sub-make command line
 # (_PGXNTOOL_TEST_BUILD_ACTIVE) don't appear either.
@@ -54,7 +55,7 @@ pgxntool_make_variables() {
   # nothing gets built. make's exit status is therefore always nonzero.
   (cd "$dir" && env -i PATH="$path" HOME="$HOME" make -pn __no_such_target__ 2>/dev/null) |
     awk '
-      /^# makefile \(from .pgxntool\/[^\047]*\.mk., line [0-9]+\)$/ {
+      /^# (makefile|.override. directive) \(from .pgxntool\/[^\047]*\.mk., line [0-9]+\)$/ {
         if ((getline line) > 0) {
           n = split(line, f, /[ \t]+/)
           name = (f[1] == "define" || f[1] == "override") ? f[2] : f[1]
