@@ -7,6 +7,7 @@
 # - Schedule generation with ../install/ relative paths
 # - Core contract: install state persists into main test suite
 # - Disabling via PGXNTOOL_ENABLE_TEST_INSTALL
+# - PGXNTOOL_ENABLE_TEST_INSTALL=yes erroring when test/install/ is empty
 # - Cleanup via make clean
 
 load ../lib/helpers
@@ -108,6 +109,14 @@ setup() {
 
   # With no SQL files, make should not generate the schedule file
   make test/install/schedule 2>/dev/null || true
+  assert_file_not_exists "test/install/schedule"
+}
+
+@test "PGXNTOOL_ENABLE_TEST_INSTALL=yes errors when test/install/ has no SQL files" {
+  # test/install/*.sql still removed by the previous test
+  run make test/install/schedule PGXNTOOL_ENABLE_TEST_INSTALL=yes
+  assert_failure
+  echo "$output" | grep -q "no .sql files found in test/install/"
   assert_file_not_exists "test/install/schedule"
 }
 

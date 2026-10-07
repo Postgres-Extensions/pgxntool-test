@@ -35,6 +35,8 @@
 # - check-duplicate-docs warns about DOCS entries sharing a basename (issue
 #   #115): PGXS installs DOCS into one flat directory and refuses to overwrite
 #   a file it just installed, so one collision fails the whole install.
+# - installcheck's order-only directory prerequisites each have a rule that
+#   creates them, so a project with no test/sql/ can still run `make test`.
 
 load ../lib/helpers
 
@@ -145,6 +147,22 @@ EOF
   assert_not_contains "$output" "adoc"
 
   rm -f docs-duplicate-test.mk
+}
+
+@test "installcheck creates missing test/sql/, test/expected/ and results/" {
+  # Make treats `dir` and `dir/` as different targets, so each order-only
+  # prerequisite must be spelled exactly like the rule that creates it.
+  # Pointing TESTDIR at a directory that doesn't exist reproduces a project
+  # without test/sql/ without touching the shared test environment; setup.sh
+  # creates test/sql/, which is why the foundation itself can't show this.
+  local testdir="$SCRATCH_DIR/test"
+
+  run make -n installcheck TESTDIR="$testdir" 2>&1
+  assert_success
+  assert_not_contains "$output" "No rule to make target"
+  assert_contains "$output" "mkdir -p $testdir/sql/"
+  assert_contains "$output" "mkdir -p $testdir/expected/"
+  assert_contains "$output" "mkdir -p $testdir/results/"
 }
 
 @test "bin/version prints a stamped version number" {

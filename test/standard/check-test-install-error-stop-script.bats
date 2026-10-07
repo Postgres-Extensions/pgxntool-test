@@ -57,6 +57,27 @@ setup() {
   assert_success
 }
 
+@test "check-test-install-error-stop.sh: passes when a file sources psql.sql via \\include" {
+  printf '\\include test/pgxntool/psql.sql\nCREATE TABLE foo AS SELECT 1;\n' > "$TESTDIR/install/foo.sql"
+
+  run "$SCRIPT" "$TESTDIR"
+  assert_success
+}
+
+@test "check-test-install-error-stop.sh: passes when a file sources psql.sql via \\include_relative" {
+  printf '\\include_relative ../pgxntool/psql.sql\nCREATE TABLE foo AS SELECT 1;\n' > "$TESTDIR/install/foo.sql"
+
+  run "$SCRIPT" "$TESTDIR"
+  assert_success
+}
+
+@test "check-test-install-error-stop.sh: passes when an indented \\set ON_ERROR_STOP is the only mention" {
+  printf '   \\set ON_ERROR_STOP on\nCREATE TABLE foo AS SELECT 1;\n' > "$TESTDIR/install/foo.sql"
+
+  run "$SCRIPT" "$TESTDIR"
+  assert_success
+}
+
 @test "check-test-install-error-stop.sh: passes when ON_ERROR_STOP is only ever turned off" {
   printf '\\set ON_ERROR_STOP 0\nCREATE TABLE foo AS SELECT 1;\n' > "$TESTDIR/install/foo.sql"
 
@@ -102,6 +123,14 @@ setup() {
 
 @test "check-test-install-error-stop.sh: fails when ON_ERROR_STOP appears only in a comment" {
   printf -- '-- ON_ERROR_STOP is set by the caller\nCREATE TABLE foo AS SELECT 1;\n' > "$TESTDIR/install/foo.sql"
+
+  run "$SCRIPT" "$TESTDIR"
+  assert_failure_with_status 1
+  assert_contains "$output" "foo.sql: never sets ON_ERROR_STOP"
+}
+
+@test "check-test-install-error-stop.sh: fails when a commented-out \\set ON_ERROR_STOP is the only mention" {
+  printf -- '-- \\set ON_ERROR_STOP on\nCREATE TABLE foo AS SELECT 1;\n' > "$TESTDIR/install/foo.sql"
 
   run "$SCRIPT" "$TESTDIR"
   assert_failure_with_status 1
