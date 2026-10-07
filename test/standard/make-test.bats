@@ -20,6 +20,7 @@
 # - verify-results blocks `make results` when tests are failing, lets a
 #   brand-new test's first expected output through (issue #119), and can be
 #   disabled. Its own pass/fail logic lives in verify-results-pgtap-script.bats
+# - PGXNTOOL_VERIFY_RESULTS_MODE is validated (pgtap/diffs, case-insensitive)
 
 load ../lib/helpers
 
@@ -645,6 +646,43 @@ EOF
   run make -n results PGXNTOOL_ENABLE_VERIFY_RESULTS=no 2>&1
   assert_success
   assert_not_contains "$output" "Cannot run 'make results'"
+}
+
+@test "PGXNTOOL_VERIFY_RESULTS_MODE accepts pgtap/diffs case-insensitively" {
+  run make print-PGXNTOOL_VERIFY_RESULTS_MODE
+  assert_success
+  assert_contains "$output" 'set to "pgtap"'
+
+  local value expected
+  for value in pgtap pgTap PGTAP diffs Diffs DIFFS; do
+    expected=$(echo "$value" | tr '[:upper:]' '[:lower:]')
+    run make print-PGXNTOOL_VERIFY_RESULTS_MODE "PGXNTOOL_VERIFY_RESULTS_MODE=$value"
+    assert_success
+    assert_contains "$output" "set to \"$expected\""
+  done
+}
+
+@test "PGXNTOOL_VERIFY_RESULTS_MODE rejects invalid values" {
+  local value
+  for value in bogus pgtapp "pgtap diffs" ""; do
+    run make print-PGXNTOOL_VERIFY_RESULTS_MODE "PGXNTOOL_VERIFY_RESULTS_MODE=$value"
+    assert_failure
+    assert_contains "$output" "PGXNTOOL_VERIFY_RESULTS_MODE must be one of: pgtap diffs; got \"$value\""
+  done
+}
+
+@test "mixed-case PGXNTOOL_VERIFY_RESULTS_MODE selects the matching verify-results recipe" {
+  # The pgtap recipe invokes verify-results-pgtap.sh; the diffs recipe is an
+  # inline regression.diffs check carrying the block message.
+  run make -n verify-results PGXNTOOL_VERIFY_RESULTS_MODE=pgTap 2>&1
+  assert_success
+  assert_contains "$output" "verify-results-pgtap.sh"
+  assert_not_contains "$output" "Cannot run 'make results'"
+
+  run make -n verify-results PGXNTOOL_VERIFY_RESULTS_MODE=DIFFS 2>&1
+  assert_success
+  assert_contains "$output" "Cannot run 'make results'"
+  assert_not_contains "$output" "verify-results-pgtap.sh"
 }
 
 @test "make results updates expected output" {
