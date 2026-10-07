@@ -532,14 +532,14 @@ EOF
   skip_if_no_postgres
 
   # Same proof pattern as check-stale-expected's disable test above: point
-  # _CHECK_TEST_INSTALL_ERROR_STOP_SCRIPT at a stub that only touches a
-  # marker file and fails. If the marker never appears, the script was
+  # _PGXNTOOL_CHECK_TEST_INSTALL_ERROR_STOP_SCRIPT at a stub that only touches
+  # a marker file and fails. If the marker never appears, the script was
   # genuinely never invoked, not merely tolerated.
   local marker="$BATS_TEST_TMPDIR/check-test-install-error-stop-invoked"
   local stub_script
   stub_script=$(make_stub_script check-test-install-error-stop-stub 1 "" "$marker")
 
-  run make test PGXNTOOL_ENABLE_TEST_INSTALL_ERROR_STOP_CHECK=no _CHECK_TEST_INSTALL_ERROR_STOP_SCRIPT="$stub_script"
+  run make test PGXNTOOL_ENABLE_TEST_INSTALL_ERROR_STOP_CHECK=no _PGXNTOOL_CHECK_TEST_INSTALL_ERROR_STOP_SCRIPT="$stub_script"
   assert_success
   assert_file_not_exists "$marker"
 }
@@ -548,13 +548,13 @@ EOF
   local stub_script
   stub_script=$(make_stub_script fail-stub 5 "STUB SENTINEL MESSAGE")
 
-  run make check-test-install-error-stop _CHECK_TEST_INSTALL_ERROR_STOP_SCRIPT="$stub_script"
+  run make check-test-install-error-stop _PGXNTOOL_CHECK_TEST_INSTALL_ERROR_STOP_SCRIPT="$stub_script"
   assert_failure
   assert_contains "$output" "STUB SENTINEL MESSAGE"
 
   stub_script=$(make_stub_script pass-stub 0)
 
-  run make check-test-install-error-stop _CHECK_TEST_INSTALL_ERROR_STOP_SCRIPT="$stub_script"
+  run make check-test-install-error-stop _PGXNTOOL_CHECK_TEST_INSTALL_ERROR_STOP_SCRIPT="$stub_script"
   assert_success
 }
 
