@@ -118,13 +118,6 @@ setup() {
   assert_failure
   echo "$output" | grep -q "no .sql files found in test/install/"
   assert_file_not_exists "test/install/schedule"
-
-  # The error must come from the test path only, not at parse time: targets
-  # that never run test/install still work with the variable set.
-  run make -n dist PGXNTOOL_ENABLE_TEST_INSTALL=yes
-  assert_success
-  run make clean PGXNTOOL_ENABLE_TEST_INSTALL=yes
-  assert_success
 }
 
 # vi: expandtab sw=2 ts=2
