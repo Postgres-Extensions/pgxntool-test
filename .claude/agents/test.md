@@ -55,6 +55,8 @@ Before running ANY test command:
 
 **If you detect parallel execution**: STOP IMMEDIATELY and alert the user.
 
+**Runs in other git worktrees can also collide.** The test lock is per-worktree, but every local run shares one Postgres cluster (installed extension files, the `regression` database, pg_tle). If a local run fails unexpectedly, especially in pgtle or test-build tests, and another worktree's run overlapped it (`ls -lt /tmp/pgxntool-test-logs*/`), re-run alone before investigating. GitHub CI doesn't have this problem: each job gets its own Postgres.
+
 ---
 
 ## 🚨 CRITICAL: NEVER Add `skip` To Tests
