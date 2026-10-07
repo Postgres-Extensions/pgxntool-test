@@ -1,0 +1,78 @@
+# Every make variable pgxntool's own *.mk files define, with its class.
+# test/standard/make-variables.bats fails on any variable missing from this
+# list (or listed but no longer defined), so adding a variable to pgxntool
+# means deciding here which class it belongs to.
+#
+# Classes:
+#   api       PGXNTOOL_*  -- user-facing override point; document it in
+#                           README.asc and treat changes as API changes.
+#   internal  _PGXNTOOL_* (or _pgxntool_* for functions) -- plumbing,
+#                           including test stub seams. Every new internal
+#                           variable must use this shape.
+#   legacy    Pre-convention names. Frozen: consumers may reference them, so
+#             they are not renamed, and nothing new may be added here.
+#   external  Names owned by PGXS or GNU make that pgxntool assigns.
+#
+# Format: "<class> <name>", one per line, sorted by name. Lines starting
+# with # and blank lines are ignored.
+
+external .DEFAULT_GOAL
+legacy   ASCIIDOC
+legacy   ASCIIDOC_EXTS
+legacy   ASCIIDOC_FILES
+legacy   ASCIIDOC_HTML
+legacy   ASCIIDOC_template
+external CONTRIB_TESTDB
+external DATA
+external DOCS
+legacy   DOCS_HTML
+legacy   DOC_DIRS
+external EXTRA_CLEAN
+legacy   GE91
+legacy   MAJORVER
+external MODULEDIR
+external MODULES
+legacy   PGVERSION
+api      PGXNTOOL_CHECK_EXPECTED_FILE_TYPES
+legacy   PGXNTOOL_DIR
+api      PGXNTOOL_ENABLE_CHECK_STALE_EXPECTED
+api      PGXNTOOL_ENABLE_FS_INSTALL
+api      PGXNTOOL_ENABLE_PGXN_INSTALL
+api      PGXNTOOL_ENABLE_TEST_BUILD
+api      PGXNTOOL_ENABLE_TEST_INSTALL
+api      PGXNTOOL_ENABLE_TEST_INSTALL_ERROR_STOP_CHECK
+api      PGXNTOOL_ENABLE_VERIFY_RESULTS
+api      PGXNTOOL_POST_TAG_VERSION
+api      PGXNTOOL_VERIFY_RESULTS_MODE
+legacy   PGXNTOOL_distclean
+legacy   PGXN_REMOTE
+external PGXS
+external PG_CONFIG
+external REGRESS
+legacy   REGRESS_DBHASH
+legacy   REGRESS_DBNAME
+legacy   TESTDIR
+legacy   TESTOUT
+legacy   TEST_BUILD_FILES
+legacy   TEST_BUILD_REGRESS
+legacy   TEST_BUILD_SQL_DIR
+legacy   TEST_BUILD_SQL_FILES
+legacy   TEST_DEPS
+legacy   TEST_FILES
+legacy   TEST_INSTALL_SQL_FILES
+legacy   TEST_RESULT_FILES
+legacy   TEST_SQL_FILES
+internal _PGXNTOOL_BASE_MK_INCLUDED
+internal _PGXNTOOL_CHECK_STALE_EXPECTED_SCRIPT
+internal _PGXNTOOL_CHECK_TEST_INSTALL_ERROR_STOP_SCRIPT
+internal _PGXNTOOL_CONTROL_FILES
+internal _PGXNTOOL_DUPLICATE_DOCS
+internal _PGXNTOOL_EXTENSIONS
+internal _PGXNTOOL_INSTALL_SCHEDULE
+internal _PGXNTOOL_POST_TAG_VERSION_BUMP_SCRIPT
+internal _pgxntool_docs_named
+legacy   pgxntool-sync-local
+legacy   pgxntool-sync-local-master
+legacy   pgxntool-sync-master
+legacy   pgxntool_validate_yesno
+legacy   test
