@@ -16,15 +16,15 @@ allowed-tools: Bash(git:*), Bash(gh:*), Bash(bash .claude/skills/crossref-audit/
 
 Check whether commits that landed on master in pgxntool and pgxntool-test
 since the last release properly cross-reference their paired counterpart in
-the other repo, per `.claude/skills/commit/guides/commit-message-format.md`.
+the other repo, per `/pr` (`.claude/commands/pr.md`).
 
-## Why this exists, and how it differs from `/commit`
+## Why this exists, and how it differs from `/pr`
 
 PRs merge via the GitHub website, by the user, outside AI control — Claude
 doesn't see the merge happen, so a missing cross-reference can only be
 caught *after the fact* by auditing what actually landed on master. This is
-a different problem from `/commit`, which only covers composing a PR
-branch's own commits *before* merge. With squash merges, the master commit
+a different problem from `/pr`, which only covers writing the cross-reference
+into a PR description *before* merge. With squash merges, the master commit
 body this audits is the PR description.
 
 ## Running it cheaply, every round
@@ -64,11 +64,10 @@ pairing is real. When genuinely unsure, ask the user rather than guessing.
 ## Step 3: Check for a cross-reference (the script does this automatically; use this if reviewing manually)
 
 For each side of a genuine pairing, confirm the commit message references
-the other repo — either a raw commit hash or (preferred, per the
-commit-message-format guide) a GitHub PR/commit URL. Note: by convention
-the pgxntool side only needs to describe related pgxntool-test changes in
-prose (no hash required); the pgxntool-test side is expected to reference
-pgxntool via hash or URL.
+the other repo. The pgxntool-test side is expected to reference pgxntool by
+PR URL (per `/pr`); a raw commit hash is also accepted, only because
+historical master commits used one. By convention the pgxntool side only
+needs to describe related pgxntool-test changes in prose.
 
 ## Step 4: Handle what you find
 
@@ -108,6 +107,6 @@ tells you to for that specific commit.
   the single tip commit under the conditions above. It never touches an
   open PR's own commits as part of the audit itself. To fix an open PR's
   commit, amend freely before it is pushed; once pushed, add a new commit
-  or ask before force-pushing (see the `/commit` skill's Restrictions).
+  or ask before force-pushing (see CLAUDE.md "Git Commit Guidelines").
 - Always re-run the full test suite after any amend-and-force-push, and
   after any resulting PR-branch rebase, before considering the fix done.

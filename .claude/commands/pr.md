@@ -22,10 +22,14 @@ Create pull requests for pgxntool and pgxntool-test changes, following the two-r
    - pgxntool-test: `--repo Postgres-Extensions/pgxntool-test`
    - **NEVER** target fork (jnasbyupgrade)
 
-4. **Cross-reference PRs:**
-   - pgxntool-test PR: Include "Related pgxntool PR: [URL]" at top
+4. **Cross-reference PRs by URL, never by commit hash:**
+   - pgxntool-test PR: "Related pgxntool PR: [URL]"
    - After creating test PR: Update pgxntool PR to add "Related pgxntool-test PR: [URL]"
+   - Single-repo PR: "Changes only in [repo]. No related changes in [other repo]."
+   - Put these lines after the opening paragraph, not first: the opening has to work standalone as the squash commit message (`../ai/PR.md` "PR descriptions").
    - **Always use full URLs** (cross-repo #number doesn't work)
+
+5. **Before pushing or creating a PR, run `/test`** and proceed only on `PASS` with zero skips (CLAUDE.md "Testing").
 
 ---
 
@@ -47,6 +51,23 @@ issue after it, with no error or warning.** This caused real drift in the
 2.2.0 release: one PR's `Fixes #7, #14, #19, #28, #50, #53` line only
 auto-closed #7 -- the other four issues were genuinely fixed but stayed
 open on GitHub until a manual post-release audit caught it.
+
+## HISTORY.asc (pgxntool PRs only)
+
+Read `../pgxntool/HISTORY.asc` and handle two separate things:
+
+1. **Entry**, only for significant user-visible changes (new features, behavior changes, bug fixes users would notice; not refactoring, test changes, cleanup, or doc fixes). Propose the entry in AsciiDoc (`==` heading) and get confirmation before adding it to the `STABLE` section at the top of the file (create the section if missing):
+   ```
+   STABLE
+   ------
+   == [Entry heading]
+   [Entry description]
+   ```
+2. **Fixed-issues line**, always: every pgxntool issue in the PR's `Fixes #N` / `Closes #N` / `Resolves #N` set goes on `Issues fixed in this release: #7, #14, #19`, the last line of the `STABLE` section, even when the change is too minor for an entry. Create the line if missing; keep it deduped and in ascending order. pgxntool issues only; pgxntool-test has no equivalent. Re-check it whenever a push to an open PR changes that set.
+
+## Debug Levels (pgxntool `.sh` changes only)
+
+For each changed `../pgxntool/*.sh` file, flag it if it contains loops (`for`, `while`) and every `debug N` call uses a single-digit level, or if it has 5+ `debug` calls all at the same level. Advisory only: present findings and let the user decide; say nothing when nothing is flagged.
 
 ## PR Description Guidelines
 
@@ -110,18 +131,23 @@ gh pr create \
   --base master \
   --head jnasbyupgrade:BRANCH \
   --title "[Title]" \
-  --body "Related pgxntool PR: [URL]
+  --body "[Opening paragraph]
 
-[Body]"
+Related pgxntool PR: [URL]
+
+[Rest of body]"
 ```
 
 ### 4. Update pgxntool PR with cross-reference
 
-```bash
-cd ../pgxntool
-gh pr edit [NUMBER] --add-body "
+`gh pr edit` has no append flag, so read the current body, append, and write it back:
 
-Related pgxntool-test PR: [URL]"
+```bash
+body=$(mktemp) &&
+gh pr view [NUMBER] --repo Postgres-Extensions/pgxntool --json body --jq .body > "$body" &&
+printf '\nRelated pgxntool-test PR: %s\n' "[URL]" >> "$body" &&
+gh pr edit [NUMBER] --repo Postgres-Extensions/pgxntool --body-file "$body"
+rm -f "$body"
 ```
 
 ---
@@ -130,7 +156,7 @@ Related pgxntool-test PR: [URL]"
 
 **Good PR Description:**
 ```
-Add pg_tle support and template consolidation
+Add pg_tle support, with a test-extra target that runs the full suite across pg_tle versions, and move the template extension into pgxntool-test.
 
 Related pgxntool-test PR: https://github.com/Postgres-Extensions/pgxntool-test/pull/2
 
