@@ -4,10 +4,12 @@
 #
 # These tests exercise pgxntool's verify-results-pgtap.sh directly against a
 # bare scratch directory -- no foundation environment, no `make`, no
-# PostgreSQL. They own all of the script's decision logic: which pgtap output
-# in results/*.out counts as a failure, and which regression.diffs entries
-# block `make results` (a real mismatch against an existing baseline) versus
-# which are a brand-new test that has no expected output yet (issue #119).
+# PostgreSQL. They own all of the script's decision logic: which regression.diffs
+# entries block `make results` (a real mismatch against an existing baseline)
+# versus which are a brand-new test that has no expected output yet (issue
+# #119), and that its TAP phase hands results/*.out plus any extra file
+# arguments to check-tap-output.sh. Which TAP output fails is that script's
+# logic, covered in check-tap-output-script.bats.
 #
 # Tests that need real Make/PostgreSQL integration stay in make-test.bats:
 # that `make verify-results` invokes this script and propagates its exit
@@ -308,6 +310,43 @@ ok 2
   run "$SCRIPT" "$TESTOUT"
   assert_failure_with_status 1
   assert_contains "$output" "pgtap plan mismatch"
+}
+
+@test "verify-results-pgtap.sh: blocks on a missing or miscounted plan" {
+  write_results noplan 'ok 1'
+
+  run "$SCRIPT" "$TESTOUT"
+  assert_failure_with_status 1
+  assert_contains "$output" "noplan.out has no plan line"
+  assert_contains "$output" "Cannot run 'make results'"
+
+  rm -f "$TESTOUT/results/noplan.out"
+  write_results short '1..2
+ok 1'
+
+  run "$SCRIPT" "$TESTOUT"
+  assert_failure_with_status 1
+  assert_contains "$output" "planned 2 tests but found 1"
+  assert_contains "$output" "Cannot run 'make results'"
+}
+
+@test "verify-results-pgtap.sh: also scans extra file arguments (test/install output)" {
+  # base.mk passes each test/install actual output, which lives outside
+  # results/. A nonexistent one (an install file that never ran) is ignored.
+  write_results passing '1..1
+ok 1'
+  mkdir -p "$TESTOUT/install"
+  printf '1..1\nok 1\n' > "$TESTOUT/install/good.out"
+
+  run "$SCRIPT" "$TESTOUT" "$TESTOUT/install/good.out" "$TESTOUT/install/missing.out"
+  assert_success
+
+  printf '1..1\nnot ok 1 - install broke\n' > "$TESTOUT/install/bad.out"
+
+  run "$SCRIPT" "$TESTOUT" "$TESTOUT/install/good.out" "$TESTOUT/install/bad.out"
+  assert_failure_with_status 1
+  assert_contains "$output" "pgtap failure detected in $TESTOUT/install/bad.out"
+  assert_contains "$output" "Cannot run 'make results'"
 }
 
 @test "verify-results-pgtap.sh: usage error when called with no TESTOUT argument" {
