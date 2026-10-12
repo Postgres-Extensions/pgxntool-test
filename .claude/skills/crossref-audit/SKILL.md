@@ -24,7 +24,8 @@ PRs merge via the GitHub website, by the user, outside AI control — Claude
 doesn't see the merge happen, so a missing cross-reference can only be
 caught *after the fact* by auditing what actually landed on master. This is
 a different problem from `/commit`, which only covers composing a PR
-branch's own commits *before* merge.
+branch's own commits *before* merge. With squash merges, the master commit
+body this audits is the PR description.
 
 ## Running it cheaply, every round
 
@@ -105,8 +106,8 @@ tells you to for that specific commit.
 
 - This audit only ever touches already-merged master commits, and only ever
   the single tip commit under the conditions above. It never touches an
-  open PR's own commits as part of the audit itself — fixing an open PR's
-  commit (not yet shared/protected history) is a normal, low-risk edit and
-  doesn't need this skill's caution, just do it directly.
+  open PR's own commits as part of the audit itself. To fix an open PR's
+  commit, amend freely before it is pushed; once pushed, add a new commit
+  or ask before force-pushing (see the `/commit` skill's Restrictions).
 - Always re-run the full test suite after any amend-and-force-push, and
   after any resulting PR-branch rebase, before considering the fix done.

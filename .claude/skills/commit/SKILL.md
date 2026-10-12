@@ -1,9 +1,9 @@
 ---
 name: commit
 description: |
-  Create git commits across pgxntool and pgxntool-test repositories following project
-  standards. Preprocesses repo info, runs tests, drafts cross-referenced commit messages,
-  and executes two-phase commits with hash injection.
+  Compose git commits on PR branches across pgxntool and pgxntool-test for review,
+  following project standards. Preprocesses repo info, runs tests, drafts cross-referenced
+  commit messages, and executes two-phase commits with hash injection.
 
   Use when: "commit", "create commit", "commit changes", "/commit"
 allowed-tools: Bash(git status:*), Bash(git log:*), Bash(git add:*), Bash(git diff:*), Bash(git commit:*), Bash(git branch:*), Bash(bash .claude/skills/commit/scripts/*), Read, Edit, Task, Skill(test)
@@ -11,13 +11,15 @@ allowed-tools: Bash(git status:*), Bash(git log:*), Bash(git add:*), Bash(git di
 
 # Commit Skill
 
-Create git commits following project standards and safety protocols for pgxntool-test.
+Compose commits on a PR branch for review, following project standards and safety
+protocols. Commits never land on master directly; what reaches master is the merge
+result (see CLAUDE.md "Git Commit Guidelines").
 
 ## Critical Requirements
 
 | Rule | Details |
 |------|---------|
-| **Git Safety** | Never update git config. Never force push -- not even to your own already-open/draft PR branch, not even when a task (a rebase, a restructure) seems to structurally require rewriting history. A task *implying* a rewrite is a signal to stop and ask, never a substitute for asking. Before any force-push, ask a literal question ("this needs a force-push to `<branch>` -- go ahead?") and wait for a real reply -- inferring a yes from the wording of the request is exactly what NOT to do. Add a new commit instead unless/until told otherwise. Never skip hooks unless requested. |
+| **Git Safety** | Never update git config. Never skip hooks unless requested. Never force-push without asking -- see Restrictions. |
 | **Attribution** | No "Generated with Claude Code" in body. Co-Authored-By trailer is OK. |
 | **Multi-Repo** | Commit BOTH repos if both have changes (unless told otherwise). No empty commits. Never create a branch on a repo that has no changes. |
 | **Testing** | ALL tests must pass. ANY failure = STOP and ask user. No rationalizing failures. |
@@ -39,7 +41,8 @@ Run the preprocessing script to collect all git data in one call:
 bash .claude/skills/commit/scripts/gather-repo-info.sh ../pgxntool .
 ```
 
-Review output. Identify which repos have changes.
+Review output. Identify which repos have changes. If either repo with changes is on
+`master`/`main`, STOP and ask -- never commit there.
 
 ### 2b. Check Debug Level Distribution (pgxntool .sh changes only)
 
@@ -128,7 +131,9 @@ After tests pass AND receiving user approval:
    - Verify: `git status`
 
 2. **Phase 2: Commit pgxntool-test** (if it has changes)
-   - Replace `[PGXNTOOL_COMMIT_HASH]` with captured hash
+   - Replace `[PGXNTOOL_COMMIT_HASH]` with captured hash -- a pointer during review only,
+     since merging creates new commits; the reference that must survive the merge goes in
+     the PR description (see the guide)
    - Stage, verify, commit, verify (same pattern)
 
 For detailed execution steps including pre-commit hook handling, read:
@@ -144,19 +149,20 @@ EOF
 
 ## After Pushing: Monitor CI
 
-After any `git push`, monitor GitHub Actions for failures:
-
-```bash
-gh run list --limit 5   # list recent runs
-gh run watch            # watch the latest run in real time
-gh run view <id>        # view a specific run's details
-```
-
-Check both repos if both were pushed. Report any CI failures to the user immediately — do not assume they are pre-existing or unrelated.
+After any `git push`, monitor CI with the `/ci` skill, per CLAUDE.md "CI Monitoring
+After Every Push". Report any CI failures to the user immediately — do not assume they are pre-existing or unrelated.
 
 ## Restrictions
 
 - DO NOT push unless explicitly asked
-- DO NOT force-push a PR branch unless the user explicitly asks you to -- including your own unreviewed draft PR, and including when a rebase/restructure task seems to require it. Ask first, literally, every time; don't infer a yes from the task's wording. If a pushed commit needs correcting, add a new commit instead unless/until told otherwise.
+- Force-pushing master/the default branch is never an agent's call (sole exception:
+  `crossref-audit` Step 4).
+- DO NOT force-push a PR branch without asking first. It is lower risk (unmerged history
+  belonging only to that PR), but in this repo pairing ask a literal question ("this needs a
+  force-push to `<branch>` -- go ahead?") and wait for a real reply, every time -- including
+  for your own unreviewed draft PR, and including when a rebase/restructure task seems to
+  require rewriting history. A task *implying* a rewrite is a signal to ask, never a
+  substitute for asking. Otherwise add a new commit. This is a deliberate exception to
+  `../ai/PR.md`'s "Force-push / history rewriting" section.
 - DO NOT commit files with secrets (.env, credentials.json)
 - Never use `-i` flags (git commit -i, git rebase -i)

@@ -61,9 +61,22 @@ this repo pairing. Always wait for explicit user instruction to commit.
 Even if you detect issues (like out-of-date files), inform the user and
 let them decide when to commit.
 
+Commits land on a PR branch, never on master. What reaches master is the
+merge result. For a squash merge, both repos use the PR title and body as
+the commit message, so the PR description is what master records.
+
+**Force-push**: on master, never an agent's call (the sole exception is
+`crossref-audit`'s Step 4, below). A PR branch is lower risk -- it is
+unmerged history belonging only to that PR -- but in this repo pairing
+still ask literally ("this needs a force-push to `<branch>` -- go ahead?")
+and wait for a real reply before force-pushing one; otherwise add a new
+commit. This is a deliberate exception to `../ai/PR.md`'s "Force-push /
+history rewriting" section, which allows PR-branch force-pushes without
+asking.
+
 ## PR-Based Workflow: Merges Happen Outside AI Control
 
-**This project uses a GitHub PR workflow, not direct commits to master.** The `/commit` skill's two-phase cross-reference process (commit pgxntool, capture its hash, commit pgxntool-test referencing it) was designed for an earlier direct-commit era and still applies to *composing a PR branch's own commits* before merge — but actually merging a PR happens via the GitHub website, by the user, outside AI control. Claude never commits directly to master and does not control when or how a PR lands, with one narrow, safety-gated exception: `crossref-audit`'s Step 4 may amend and force-push a single tip-of-master commit to add a missing cross-reference, under the specific conditions documented there (never more than one commit, never at or before the last release tag, content-diff verified empty before pushing).
+**This project uses a GitHub PR workflow; Claude never commits directly to master.** The `/commit` skill composes a PR branch's commits for review, including the two-phase cross-reference process (commit pgxntool, capture its hash, commit pgxntool-test referencing it). Squash and rebase merges both create new commits on master ([GitHub docs](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/configuring-pull-request-merges/about-merge-methods-on-github)), so a branch commit's hash is only a pointer during review; the cross-reference that has to survive the merge goes in the PR description, preferably as a PR URL. Merging happens via the GitHub website, by the user, outside AI control, and Claude does not control when or how a PR lands, with one narrow, safety-gated exception: `crossref-audit`'s Step 4 may amend and force-push a single tip-of-master commit to add a missing cross-reference, under the specific conditions documented there (never more than one commit, never at or before the last release tag, content-diff verified empty before pushing).
 
 Because of that, whether a paired PR's cross-reference actually made it onto master can only be verified *after the fact*, once both sides are already merged — see `crossref-audit` below.
 

@@ -79,9 +79,9 @@ Add tests/updates for pgxntool commit [PGXNTOOL_COMMIT_HASH] (brief description)
 Co-Authored-By: Claude <noreply@anthropic.com>
 ```
 
-- Use placeholder `[PGXNTOOL_COMMIT_HASH]` (replaced with actual hash during execution)
-- **A direct GitHub URL to the pgxntool PR or commit (e.g. `https://github.com/Postgres-Extensions/pgxntool/pull/63`) is an acceptable, and preferred, substitute for a raw commit hash.** A PR link stays valid even if the referenced commit is later rebased or amended (its hash changes, but the PR URL doesn't); a bare hash embedded in already-committed text goes stale silently in that case. Prefer linking the PR once one exists.
-- If a raw hash was used and the referenced pgxntool commit is later rebased/amended (changing its hash) before your pgxntool-test PR merges, update the reference to the new hash before merging. This only matters pre-merge — once a commit has landed on master, don't rewrite it to fix a stale reference without explicit instruction from the user; rewriting shared history on a protected branch is a different (and much riskier) class of action than amending your own open PR branch.
+- Use placeholder `[PGXNTOOL_COMMIT_HASH]` (replaced with actual hash during execution). The hash is a pointer for review only: squash and rebase merges both create new commits, so no branch commit's hash reaches master.
+- **The cross-reference that has to survive the merge goes in the PR description, preferably as the pgxntool PR's URL** (e.g. `https://github.com/Postgres-Extensions/pgxntool/pull/63`). With squash merges the PR body becomes master's commit message, and a PR link stays valid when the referenced commit is rebased or amended; a bare hash goes stale silently. The same URL is also the preferred substitute for the hash in the commit message once the PR exists.
+- If a raw hash was used and the referenced pgxntool commit is rebased/amended before your pgxntool-test PR merges, update the reference to the new hash.
 - Include brief summary (2-3 bullets) of pgxntool changes near top
 - Wrap code references in backticks
 
@@ -97,6 +97,8 @@ If only one repo has changes:
 ---
 
 ## Two-Phase Commit Execution
+
+Both phases commit to PR branches for review (the skill's step 2 stops on `master`/`main`).
 
 ### Phase 1: Commit pgxntool
 
@@ -155,4 +157,5 @@ The two repositories:
 - **pgxntool-test** (this repo) - Test harness with template files in `template/` directory.
 
 Commit pgxntool first (no placeholder), capture hash, then commit pgxntool-test (inject hash).
-Result: pgxntool-test commit references the pgxntool commit it corresponds to.
+Result: during review, the pgxntool-test commit references the pgxntool commit it
+corresponds to; the PR description carries that reference through the merge.
