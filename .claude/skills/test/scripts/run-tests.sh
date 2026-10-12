@@ -46,15 +46,14 @@ STATUS_FILE="$LOG_DIR/status"
 # Determine what to run
 TARGET="${1:-test-all}"
 shift 2>/dev/null || true
-EXTRA_ARGS="$*"
 
-# Build the command
+# Build the argv; arguments are passed through literally, never re-parsed by a shell.
 if [[ "$TARGET" == *.bats ]]; then
   # Specific bats file(s)
-  CMD="test/bats/bin/bats $TARGET $EXTRA_ARGS"
+  CMD=(test/bats/bin/bats "$TARGET" "$@")
 else
   # Make target
-  CMD="make $TARGET"
+  CMD=(make "$TARGET")
 fi
 
 # Initialize status file
@@ -75,15 +74,20 @@ SKIPPED=0
 CURRENT_SUITE=""
 EXIT_CODE=0
 
-# A direct .bats run needs the submodule; let make initialize it (output goes to the full log).
-if [[ "$TARGET" == *.bats ]]; then
-  CMD="make test/bats/bin/bats && $CMD"
-fi
+# A direct .bats run needs the submodule; let make initialize it first (output goes to the
+# full log, and a failure there is the run's failure).
+run_cmd() {
+  if [[ "$TARGET" == *.bats ]]; then
+    make test/bats/bin/bats && "${CMD[@]}"
+  else
+    "${CMD[@]}"
+  fi
+}
 
 # Run tests, capturing output and parsing TAP in real-time. The while loop runs in a
 # subshell, so the command's status is taken from PIPESTATUS in the parent. Under pipefail
 # a zero there means tee or the read loop failed, which still counts as a failure.
-bash -c "$CMD" 2>&1 | tee "$FULL_LOG" | while IFS= read -r line; do
+run_cmd 2>&1 | tee "$FULL_LOG" | while IFS= read -r line; do
   # Detect new suite (TAP plan line: 1..N)
   if [[ "$line" =~ ^1\.\. ]]; then
     SUITES=$((SUITES + 1))
@@ -133,7 +137,7 @@ FAILED=0
 SKIPPED=0
 PLAN_TOTAL=0
 
-while IFS= read -r line; do
+while IFS= read -r line || [ -n "$line" ]; do
   if [[ "$line" =~ ^1\.\. ]]; then
     SUITES=$((SUITES + 1))
     if [[ "$line" =~ ^1\.\.([0-9]+)$ ]]; then
@@ -156,7 +160,7 @@ done < "$FULL_LOG"
 > "$ERRORS_LOG"
 {
   IN_FAILURE=false
-  while IFS= read -r line; do
+  while IFS= read -r line || [ -n "$line" ]; do
     if [[ "$line" =~ ^not[[:space:]]ok[[:space:]] ]]; then
       IN_FAILURE=true
       echo "$line" >> "$ERRORS_LOG"
@@ -173,7 +177,7 @@ done < "$FULL_LOG"
 grep -E '^ok .* # skip' "$FULL_LOG" >> "$SKIPS_LOG" 2>/dev/null || true
 
 # Determine overall status. FAIL is checked first and covers a run that executed nothing
-# (or fewer tests than the TAP plans declared), whatever the command's exit code was.
+# (or a different number of tests than the TAP plans declared), whatever the command's exit code was.
 REASONS=()
 [ "$EXIT_CODE" -ne 0 ] && REASONS+=("command exited $EXIT_CODE")
 [ "$TOTAL" -eq 0 ] && REASONS+=("no tests ran")

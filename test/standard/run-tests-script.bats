@@ -115,7 +115,7 @@ use_stub() {
   assert_failure_with_status 4
   assert_contains "$output" "REASON: command exited 4; no tests ran"
   assert_contains "$output" "submodule trouble"
-  [ ! -e "$WORK/bats-ran" ]
+  assert_file_not_exists "$WORK/bats-ran"
 
   # Stub make succeeds: bats exiting non-zero without TAP fails with its code
   use_stub make 0
@@ -125,6 +125,22 @@ use_stub() {
   assert_failure_with_status 3
   assert_contains "$output" "STATUS: FAIL"
   assert_contains "$output" "REASON: command exited 3; no tests ran"
+}
+
+@test "run-tests.sh: extra arguments reach bats literally, not as shell syntax" {
+  use_stub make 0
+  mkdir -p "$WORK/test/bats/bin"
+  cat > "$WORK/test/bats/bin/bats" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$@" > "$BATS_TEST_TMPDIR/bats-argv"
+echo "1..1"
+echo "ok 1 a"
+EOF
+  chmod +x "$WORK/test/bats/bin/bats"
+
+  run "$RUN_TESTS" some.bats --filter 'foo|wc -l'
+  assert_success
+  [ "$(cat "$BATS_TEST_TMPDIR/bats-argv")" = $'some.bats\n--filter\nfoo|wc -l' ]
 }
 
 @test "run-tests.sh: real make error for an unknown target fails" {
@@ -141,8 +157,14 @@ use_stub() {
   assert_success
   assert_contains "$output" "git submodule update --init --recursive test/bats"
 
-  local target
-  for target in foundation test-recursion test-setup test test-extra test-all; do
-    grep -Eq "^$target:.* test/bats/bin/bats( |$)" <<< "$output"
+  # Targets whose recipe invokes bats, read from the rule database
+  local targets target
+  targets=$(awk '/^[A-Za-z0-9_.\/-]+:/ {t=$1; sub(/:$/,"",t)}
+                 /^\t.*test\/bats\/bin\/bats/ && t != "" {print t}' <<< "$output" | sort -u)
+  [ -n "$targets" ] || error "no target with a bats recipe found in make's rule database"
+
+  for target in $targets; do
+    grep -Eq "^$target:.* test/bats/bin/bats( |$)" <<< "$output" ||
+      error "$target does not depend on test/bats/bin/bats"
   done
 }
