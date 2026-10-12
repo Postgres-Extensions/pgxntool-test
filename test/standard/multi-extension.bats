@@ -164,4 +164,25 @@ setup() {
   assert_success
 }
 
+@test "make pgtle fails when pgtle.sh fails for a non-last extension" {
+  run make print-_PGXNTOOL_EXTENSIONS
+  assert_success
+  local list=${output#*set to \"} exts
+  read -ra exts <<< "${list%\"}"
+  local first_ext=${exts[0]}
+  [ ${#exts[@]} -ge 2 ] || error "need at least 2 extensions, got: $output"
+  debug 2 "first extension: $first_ext"
+
+  local ranges=(pg_tle/*/)
+  [ -d "${ranges[0]}" ] || error "no pg_tle/<range>/ directory from the earlier make pgtle"
+  local range=${ranges[0]}
+
+  # A directory where pgtle.sh writes its output file makes it fail for the
+  # first extension only; the make call's own exit status is what's asserted.
+  rm -rf pg_tle
+  mkdir -p "${range}${first_ext}.sql"
+  run make pgtle
+  assert_failure
+}
+
 # vi: expandtab sw=2 ts=2
