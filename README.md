@@ -20,7 +20,7 @@ The tests use relative paths to access pgxntool, so maintaining this structure i
 - rsync
 - asciidoctor (for documentation tests)
 
-BATS (Bash Automated Testing System) is included as a git submodule at `test/bats/`.
+BATS (Bash Automated Testing System) is included as a git submodule at `test/bats/`; `make` initializes it on first use.
 
 ### PostgreSQL Configuration
 

@@ -75,10 +75,15 @@ SKIPPED=0
 CURRENT_SUITE=""
 EXIT_CODE=0
 
-# Run tests, capturing output and parsing TAP in real-time
-{
-  $CMD 2>&1 || EXIT_CODE=$?
-} | tee "$FULL_LOG" | while IFS= read -r line; do
+# A direct .bats run needs the submodule; let make initialize it (output goes to the full log).
+if [[ "$TARGET" == *.bats ]]; then
+  CMD="make test/bats/bin/bats && $CMD"
+fi
+
+# Run tests, capturing output and parsing TAP in real-time. The while loop runs in a
+# subshell, so the command's status is taken from PIPESTATUS in the parent. Under pipefail
+# a zero there means tee or the read loop failed, which still counts as a failure.
+bash -c "$CMD" 2>&1 | tee "$FULL_LOG" | while IFS= read -r line; do
   # Detect new suite (TAP plan line: 1..N)
   if [[ "$line" =~ ^1\.\. ]]; then
     SUITES=$((SUITES + 1))
@@ -118,7 +123,7 @@ CURRENT_SUITE: $CURRENT_SUITE
 LAST: $line
 INNER_EOF
   fi
-done
+done || { EXIT_CODE=${PIPESTATUS[0]}; [ "$EXIT_CODE" -ne 0 ] || EXIT_CODE=1; }
 
 # The pipe subshell loses counter values, so re-parse from the full log
 SUITES=0
@@ -126,10 +131,14 @@ TOTAL=0
 PASSED=0
 FAILED=0
 SKIPPED=0
+PLAN_TOTAL=0
 
 while IFS= read -r line; do
   if [[ "$line" =~ ^1\.\. ]]; then
     SUITES=$((SUITES + 1))
+    if [[ "$line" =~ ^1\.\.([0-9]+)$ ]]; then
+      PLAN_TOTAL=$((PLAN_TOTAL + BASH_REMATCH[1]))
+    fi
   elif [[ "$line" =~ ^ok[[:space:]] ]]; then
     TOTAL=$((TOTAL + 1))
     if [[ "$line" =~ \#[[:space:]]*skip ]]; then
@@ -142,11 +151,6 @@ while IFS= read -r line; do
     FAILED=$((FAILED + 1))
   fi
 done < "$FULL_LOG"
-
-# Determine exit code from the log if pipe lost it
-if [ "$FAILED" -gt 0 ] && [ "$EXIT_CODE" -eq 0 ]; then
-  EXIT_CODE=1
-fi
 
 # Extract failures with diagnostics
 > "$ERRORS_LOG"
@@ -168,19 +172,31 @@ fi
 > "$SKIPS_LOG"
 grep -E '^ok .* # skip' "$FULL_LOG" >> "$SKIPS_LOG" 2>/dev/null || true
 
-# Determine overall status
-if [ "$FAILED" -gt 0 ]; then
+# Determine overall status. FAIL is checked first and covers a run that executed nothing
+# (or fewer tests than the TAP plans declared), whatever the command's exit code was.
+REASONS=()
+[ "$EXIT_CODE" -ne 0 ] && REASONS+=("command exited $EXIT_CODE")
+[ "$TOTAL" -eq 0 ] && REASONS+=("no tests ran")
+[ "$PLAN_TOTAL" -ne "$TOTAL" ] && REASONS+=("TAP plan declared $PLAN_TOTAL tests, $TOTAL reported")
+[ "$FAILED" -gt 0 ] && REASONS+=("$FAILED test(s) failed")
+if [ "${#REASONS[@]}" -gt 0 ]; then
   STATUS="FAIL"
+  REASON_LINE="REASON: $(IFS=';'; echo "${REASONS[*]}" | sed 's/;/; /g')"
+  [ "$EXIT_CODE" -ne 0 ] || EXIT_CODE=1
 elif [ "$SKIPPED" -gt 0 ]; then
   STATUS="PASS_WITH_SKIPS"
+  REASON_LINE=""
 else
   STATUS="PASS"
+  REASON_LINE=""
 fi
 
 # Build failure section
-FAILURE_LINES=""
 if [ -s "$ERRORS_LOG" ]; then
   FAILURE_LINES=$(cat "$ERRORS_LOG")
+elif [ "$STATUS" = "FAIL" ]; then
+  FAILURE_LINES="  (no TAP failures parsed; last 20 lines of full log:)
+$(tail -n 20 "$FULL_LOG" | sed 's/^/    /')"
 else
   FAILURE_LINES="  (none)"
 fi
@@ -197,7 +213,8 @@ fi
 SUMMARY=$(cat <<EOF
 STATE: DONE
 STATUS: $STATUS
-SUITES: $SUITES  TOTAL: $TOTAL  PASSED: $PASSED  FAILED: $FAILED  SKIPPED: $SKIPPED
+${REASON_LINE:+$REASON_LINE
+}SUITES: $SUITES  TOTAL: $TOTAL  PASSED: $PASSED  FAILED: $FAILED  SKIPPED: $SKIPPED
 EXIT_CODE: $EXIT_CODE
 
 FAILURES:
