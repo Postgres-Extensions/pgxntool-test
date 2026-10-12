@@ -118,6 +118,18 @@ setup() {
   # trimming (issues #25, #26).
   run make pgtle
   assert_success
+
+  # make's exit status alone can't prove both extensions were processed: the
+  # pgtle recipe joins its per-extension pgtle.sh calls with ';', so only the
+  # last one's status counts. Check every range has output for both.
+  local ranges=(pg_tle/*/)
+  [ -d "${ranges[0]}" ] || error "make pgtle created no pg_tle/<range>/ directories"
+  local range ext
+  for range in "${ranges[@]}"; do
+    for ext in ext_alpha ext_beta; do
+      [ -f "${range}${ext}.sql" ] || error "missing ${range}${ext}.sql"
+    done
+  done
 }
 
 @test "sql/ext_alpha--1.0.0.sql is generated" {
