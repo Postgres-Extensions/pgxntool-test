@@ -31,18 +31,23 @@ write_out() {
   printf '%s\n' "$2" > "$OUTDIR/$1.out"
 }
 
-@test "check-tap-output.sh: passes clean TAP output, a skip_all 1..0, and TODO failures" {
+@test "check-tap-output.sh: passes clean TAP output, no_plan() (plan last), a skip_all 1..0, and TODO failures" {
   write_out clean '\set ECHO none
 1..2
 ok 1
 ok 2 - described
+# TRANSACTION INTENTIONALLY LEFT OPEN!'
+  write_out noplan '\set ECHO none
+ok 1
+ok 2 - described
+1..2
 # TRANSACTION INTENTIONALLY LEFT OPEN!'
   write_out skipall '1..0 # Skipped: nothing to do here'
   write_out todo '1..2
 ok 1
 not ok 2 - known issue # TODO fix later'
 
-  run "$SCRIPT" "$OUTDIR/clean.out" "$OUTDIR/skipall.out" "$OUTDIR/todo.out"
+  run "$SCRIPT" "$OUTDIR/clean.out" "$OUTDIR/noplan.out" "$OUTDIR/skipall.out" "$OUTDIR/todo.out"
   assert_success
   [ -z "$output" ] || error "expected no output, got: $output"
 }
