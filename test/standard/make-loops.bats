@@ -282,6 +282,8 @@ copy:
 >@until false; do break; done
 >@for f do echo $$f; done
 >@while { true; } do break; done
+>@while (false) do break; done
+>@for ((i=0;i<2;i++)) do echo $$i; done
 gen:
 >@$(foreach e,a b,./run.sh $(e);)
 use-helper:
@@ -315,6 +317,8 @@ rule:copy while
 rule:copy until
 rule:copy for
 rule:copy while
+rule:copy while
+rule:copy for
 rule:gen foreach
 rule:inline for
 rule:$(SRCS:.c=.o) for

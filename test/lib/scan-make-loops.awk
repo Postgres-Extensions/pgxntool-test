@@ -27,7 +27,7 @@ BEGIN {
   LOOP = "(for[ \t]+[A-Za-z_][A-Za-z0-9_]*([ \t]+in([ \t;]|$)|[ \t]*;|[ \t]+do([ \t;]|$))|for[ \t]*\\(\\(|while([ \t({!]|$)|until([ \t({!]|$))"
   SHELL_LOOP = CMDPOS LOOP
   # The `do` that a real loop's keyword must be followed by outside a define
-  # body: after a separator, or right after `for NAME`.
+  # body: after one of ; & ) }, or right after `for NAME`.
   DO_AFTER = "[;&)}][ \t]*do([ \t]|$)"
   FOR_NAME_DO = "^for[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]+do([ \t;]|$)"
 }
