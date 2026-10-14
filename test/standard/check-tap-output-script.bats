@@ -67,6 +67,14 @@ not ok 2 - known issue # TODO fix later'
 
   run "$SCRIPT"
   assert_success
+
+  # --list names just the TAP files, by the same definition, and checks
+  # nothing: a failing TAP file is still listed with a zero exit.
+  write_out failing '1..1
+not ok 1'
+  run "$SCRIPT" --list "$OUTDIR/plain.out" "$OUTDIR/failing.out" "$OUTDIR/missing.out"
+  assert_success
+  [ "$output" = "$OUTDIR/failing.out" ]
 }
 
 @test "check-tap-output.sh: fails on a not ok without TODO" {

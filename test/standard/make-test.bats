@@ -20,7 +20,7 @@
 # - verify-results blocks `make results` when tests are failing, lets a
 #   brand-new test's first expected output through (issue #119), and can be
 #   disabled. Its own pass/fail logic lives in verify-results-pgtap-script.bats
-# - PGXNTOOL_VERIFY_RESULTS_MODE is validated (pgtap/diffs, case-insensitive)
+# - PGXNTOOL_VERIFY_RESULTS_MODE is validated (pgtap/pgtap-only/diffs, case-insensitive)
 
 load ../lib/helpers
 
@@ -579,6 +579,18 @@ EOF
   assert_success
   assert_contains "$output" "verify-results-pgtap.sh test test/install/create_install_marker.out"
 
+  # pgtap-only: verify-results-pgtap.sh, not a plain regression.diffs check,
+  # judges `make test`'s diffs, after the same TAP check.
+  run make -n test PGXNTOOL_VERIFY_RESULTS_MODE=pgtap-only
+  assert_success
+  assert_contains "$output" "test/bin/check-tap-output.sh test/results/*.out test/install/create_install_marker.out"
+  assert_contains "$output" "verify-results-pgtap.sh --pgtap-only --for-test test || status=1"
+  assert_not_contains "$output" "cat test/regression.diffs"
+
+  run make -n verify-results PGXNTOOL_VERIFY_RESULTS_MODE=pgtap-only
+  assert_success
+  assert_contains "$output" "verify-results-pgtap.sh --pgtap-only test test/install/create_install_marker.out"
+
   run make -n test PGXNTOOL_ENABLE_CHECK_TAP_OUTPUT=no
   assert_success
   assert_not_contains "$output" "check-tap-output.sh"
@@ -703,13 +715,13 @@ EOF
   assert_not_contains "$output" "Cannot run 'make results'"
 }
 
-@test "PGXNTOOL_VERIFY_RESULTS_MODE accepts pgtap/diffs case-insensitively" {
+@test "PGXNTOOL_VERIFY_RESULTS_MODE accepts pgtap/pgtap-only/diffs case-insensitively" {
   run make print-PGXNTOOL_VERIFY_RESULTS_MODE
   assert_success
   assert_contains "$output" 'set to "pgtap"'
 
   local value expected
-  for value in pgtap pgTap PGTAP diffs Diffs DIFFS; do
+  for value in pgtap pgTap PGTAP pgtap-only PgTap-Only diffs Diffs DIFFS; do
     expected=$(echo "$value" | tr '[:upper:]' '[:lower:]')
     run make print-PGXNTOOL_VERIFY_RESULTS_MODE "PGXNTOOL_VERIFY_RESULTS_MODE=$value"
     assert_success
@@ -722,8 +734,13 @@ EOF
   for value in bogus pgtapp "pgtap diffs" ""; do
     run make print-PGXNTOOL_VERIFY_RESULTS_MODE "PGXNTOOL_VERIFY_RESULTS_MODE=$value"
     assert_failure
-    assert_contains "$output" "PGXNTOOL_VERIFY_RESULTS_MODE must be one of: pgtap diffs; got \"$value\""
+    assert_contains "$output" "PGXNTOOL_VERIFY_RESULTS_MODE must be one of: pgtap pgtap-only diffs; got \"$value\""
   done
+
+  # pgtap-only without the TAP check would pass TAP tests on nothing.
+  run make print-PGXNTOOL_VERIFY_RESULTS_MODE PGXNTOOL_VERIFY_RESULTS_MODE=pgtap-only PGXNTOOL_ENABLE_CHECK_TAP_OUTPUT=NO
+  assert_failure
+  assert_contains "$output" "PGXNTOOL_VERIFY_RESULTS_MODE=pgtap-only requires PGXNTOOL_ENABLE_CHECK_TAP_OUTPUT=yes"
 }
 
 @test "mixed-case PGXNTOOL_VERIFY_RESULTS_MODE selects the matching verify-results recipe" {
