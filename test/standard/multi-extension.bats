@@ -118,6 +118,14 @@ setup() {
   # trimming (issues #25, #26).
   run make pgtle
   assert_success
+  local dir found=0
+  for dir in pg_tle/*/; do
+    [ -d "$dir" ] || break
+    found=1
+    [ -f "${dir}ext_alpha.sql" ] || error "make pgtle did not generate ${dir}ext_alpha.sql"
+    [ -f "${dir}ext_beta.sql" ] || error "make pgtle did not generate ${dir}ext_beta.sql"
+  done
+  [ "$found" = 1 ] || error "make pgtle generated no pg_tle/<range>/ directory"
 }
 
 @test "sql/ext_alpha--1.0.0.sql is generated" {
