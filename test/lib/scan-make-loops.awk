@@ -14,6 +14,8 @@
 #   - rule headers: the prerequisites, plus any `; recipe` (taken from the raw
 #     line, since make doesn't strip comments from it)
 #   - everything else: the line minus its make comment
+# A for/while/until at command position counts only when a `do` follows it in
+# the searched text, except in a define body, where every one counts.
 
 BEGIN {
   # Shell command position: start of the text, after a separator or opening
@@ -24,6 +26,10 @@ BEGIN {
   # awk's `for(i in A)` don't match.
   LOOP = "(for[ \t]+[A-Za-z_][A-Za-z0-9_]*([ \t]+in([ \t;]|$)|[ \t]*;|[ \t]+do([ \t;]|$))|for[ \t]*\\(\\(|while([ \t({!]|$)|until([ \t({!]|$))"
   SHELL_LOOP = CMDPOS LOOP
+  # The `do` that a real loop's keyword must be followed by outside a define
+  # body: after a separator, or right after `for NAME`.
+  DO_AFTER = "[;&)}][ \t]*do([ \t]|$)"
+  FOR_NAME_DO = "^for[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]+do([ \t;]|$)"
 }
 
 # Physical lines are buffered until one doesn't end in an odd number of
@@ -143,16 +149,19 @@ function search_foreach(s, key) {
   }
 }
 
-function search_shell(s, key,   at, m) {
+function search_shell(s, key,   at, m, kind) {
   while (match(s, SHELL_LOOP)) {
     at = RSTART
     m = substr(s, RSTART, RLENGTH)
     match(m, /for|while|until/)
+    at += RSTART - 1
+    kind = substr(m, RSTART, RLENGTH)
     m = substr(m, RSTART)
-    emit(key, m ~ /^for/ ? "for" : m ~ /^while/ ? "while" : "until")
+    if (key ~ /^define:/ || substr(s, at + RLENGTH) ~ DO_AFTER || m ~ FOR_NAME_DO)
+      emit(key, kind)
     # Resume just past the keyword's first character; the "_" keeps the
     # remainder's start from counting as command position.
-    s = "_" substr(s, at + RSTART)
+    s = "_" substr(s, at + 1)
   }
 }
 

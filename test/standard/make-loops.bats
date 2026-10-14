@@ -2,31 +2,30 @@
 
 # Test: inventory of the loops in pgxntool's *.mk files
 #
-# Fails whenever pgxntool's *.mk files have a loop that
-# test/lib/pgxntool-loops.txt doesn't list, stop having one it lists, or change
-# the text of the line containing one, so a new loop can't land without a test
-# that makes one of its non-last iterations fail, and a changed one can't land
-# without a fresh look at whether it still fails make: a recipe loop hides the
-# failure of every iteration but the last unless each one ends in `|| exit 1`
-# or the iterations are chained with &&. Needs no pg_config, foundation env, or
-# Postgres.
+# Fails when pgxntool's *.mk files have a loop test/lib/pgxntool-loops.txt
+# doesn't list, lack one it lists, or change the line containing one. A recipe
+# loop hides the failure of every iteration but the last unless each one ends
+# in `|| exit 1` or the iterations are chained with &&. The steps to take for
+# each kind of failure are in the failure message. Needs no pg_config,
+# foundation env, or Postgres.
 #
-# test/lib/scan-make-loops.awk reads the source text rather than make's
-# database (`make -p`, which make-variables.bats uses), because make -p shows
-# only recipes in active conditional branches: with default settings the
-# diffs-mode verify-results recipe is absent. A missed loop is the one failure
-# this test can't afford.
+# test/lib/scan-make-loops.awk reads the source text, not make's database
+# (`make -p`), which shows only recipes in active conditional branches: with
+# default settings it lacks the diffs-mode verify-results recipe. A missed loop
+# is the one failure this test can't afford.
 #
-# Loops are keyed by file, enclosing context and kind, never by line number or
-# neighbouring text, so edits near a loop don't trip the test. Each entry also
-# holds a fingerprint of the logical line containing the loop, which any edit
-# to that line other than whitespace changes: that line is what make sees the
-# exit status of, including any command after `done` that replaces the loop's.
+# Loops are keyed by file, context and kind, never by line number, so edits
+# near a loop don't trip the test. Each entry's fingerprint covers the whole
+# logical line containing the loop, since that line's exit status, including
+# any command after `done`, is what make sees.
 #
-# Shell keywords count only at command position, but quoted strings aren't
-# stripped (`sh -c "..."` bodies are real shell), so text that opens a quoted
-# string or an embedded awk program with "while " or "for x in" is counted
-# too. That overmatch is stable, so it's accepted.
+# A for/while/until counts only at shell command position, and outside define
+# bodies only with a `do` after it: a recipe line, assignment value or rule
+# line is one shell command line, so a real loop's `do` follows on that logical
+# line. A define body may be handed whole to one shell, with `do` on a later
+# line, so there every keyword at command position counts. Quoted strings
+# aren't stripped (`sh -c "..."` bodies are real shell); text that still
+# matches but isn't a loop gets a `not-a-loop:` entry.
 #
 # Not scanned: recipe text that the *.mk.sh generators echo into meta.mk and
 # control.mk. They emit no loops today.
@@ -158,9 +157,12 @@ ${new%$'\n'}
 A shell loop (or \$(foreach) that generates commands) in a recipe hides the failure of every iteration but the last unless each iteration ends in \`|| exit 1\` or the iterations are chained with &&.
 Do these IN ORDER:
   1. Write a test that makes a NON-LAST iteration of this loop fail and asserts make exits non-zero. Confirm it catches the bug: temporarily remove the loop's \`|| exit 1\`, and the test must fail.
-  2. Only then add the entry to $rel, with the loop's fingerprint from the list below and that test in the coverage column (test:<file>:<@test name>).
+  2. Only after that test exists and passes, add the entry to $rel, with the loop's fingerprint from the list below and that test in the coverage column (test:<file>:<@test name>).
 Do NOT add the entry just to make this test pass; this list exists to force step 1.
-Use make-time:<why> only for a \$(foreach) that runs inside make and emits no shell commands. Never use untested: for a new loop.
+The only exceptions, each still an entry with the fingerprint below:
+  - make-time:<why>, only for a \$(foreach) that runs inside make and emits no shell commands.
+  - not-a-loop:<why>, only for a for/while/until match you have READ and confirmed is not shell code that runs a loop (e.g. the word \"while\" inside an echoed message); <why> says what the text is. If any part of the line runs a loop, it is a loop: go back to step 1.
+Never use untested: for a new loop.
 Fingerprints of the unlisted loops, each followed by the line containing it:
 ${unlisted%$'\n'}
 "
@@ -169,7 +171,7 @@ Changed loop(s) in pgxntool's *.mk files: the line containing each one no longer
 ${changed%$'\n'}
 Do these IN ORDER:
   1. Read the loop as it is now and confirm that a failure in ANY iteration, not just the last, still fails make: each iteration ends in \`|| exit 1\` or the iterations are chained with &&, there is no \`-\` prefix, and nothing after \`done\` replaces the loop's exit status.
-  2. For a test: entry, confirm the named test still exercises the loop as changed: temporarily remove the loop's error handling, and the test must fail. For untested: or make-time:, recheck that the stated reason still holds.
+  2. For a test: entry, confirm the named test still exercises the loop as changed: temporarily remove the loop's error handling, and the test must fail. For untested: or make-time:, recheck that the stated reason still holds. For not-a-loop:, reread the line and confirm the match still isn't a loop; if the line now runs one, it needs a failure test (see the new-loop steps) and a test: entry.
   3. Only then update the fingerprint.
 New fingerprint(s), for step 3:
 ${changed_fingerprints%$'\n'}
@@ -203,8 +205,12 @@ If a loop moved to another context (e.g. a renamed target), fix its entry instea
         [ "$kind" = foreach ] ||
           bad+="  make-time: is only for \$(foreach), not a shell $kind loop: $file $context"$'\n'
         ;;
+      not-a-loop:?*)
+        [ "$kind" != foreach ] ||
+          bad+="  not-a-loop: is only for a shell for/while/until match, never a \$(foreach): $file $context"$'\n'
+        ;;
       untested:?*) ;;
-      *) bad+="  coverage must be test:<path under test/>:<@test name>, make-time:<why> or untested:<why>: $file $context $kind"$'\n' ;;
+      *) bad+="  coverage must be test:<path under test/>:<@test name>, make-time:<why>, not-a-loop:<why> or untested:<why>: $file $context $kind"$'\n' ;;
     esac
   done <<< "$entries"
   [ -z "$bad" ] || problems+="
@@ -251,7 +257,9 @@ $(diff -u <(echo "$want") <(echo "$got"))"
 }
 
 @test "scan-make-loops.awk finds each loop shape and skips comments and prose" {
-  # Lines starting with ">" start with a tab once written out.
+  # Lines starting with ">" start with a tab once written out. The echo and
+  # $(error) lines name a keyword with no `do` after it, so only the define
+  # body's one counts.
   local fixture="$BATS_TEST_TMPDIR/fixture.mk"
   awk '{ sub(/^>/, "\t") } 1' > "$fixture" <<'EOF'
 # make comment: for f in a b; do $(foreach x,y,z); done
@@ -265,6 +273,15 @@ copy:
 >@# disabled: true; for f in a b; do echo $$f; done
 >@awk '{for(i in A) print A[i]}' /dev/null
 >@echo "for a reason" >&2
+>@echo "while building foo"
+>@echo "ERROR: failed (while installing)"
+>@echo "see notes (for example; the README)"
+>$(error bad value (for instance; see docs))
+>@echo "until then, nothing"
+>@while read f; do echo $$f; done < list
+>@until false; do break; done
+>@for f do echo $$f; done
+>@while { true; } do break; done
 gen:
 >@$(foreach e,a b,./run.sh $(e);)
 use-helper:
@@ -279,6 +296,7 @@ INDENTED = 1
 define TEMPLATE
 $(1)-copy:
 >for f in $(1); do cp $$$$f out/; done
+>@echo "while building foo"
 endef
 ifeq (never,taken)
 untaken:
@@ -293,11 +311,16 @@ var:HASH foreach
 rule:copy for
 rule:copy while
 rule:copy for
+rule:copy while
+rule:copy until
+rule:copy for
+rule:copy while
 rule:gen foreach
 rule:inline for
 rule:$(SRCS:.c=.o) for
 var:INDENTED_LOOP foreach
 define:TEMPLATE for
+define:TEMPLATE while
 rule:untaken for'
   got=$(awk -v file=fixture.mk -f "$SCANNER" "$fixture" | cut -f2,3 | tr '\t' ' ')
   [ "$got" = "$want" ] || error "scanner output differs from expected:

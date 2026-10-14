@@ -1,10 +1,6 @@
 # Every loop in pgxntool's *.mk files, with the test proving that a failing
-# iteration fails make. A new loop needs that test BEFORE it gets an entry
-# here: write a test that makes a non-last iteration fail and asserts make
-# exits non-zero, confirm it fails with the loop's `|| exit 1` removed, then
-# add the entry naming it. A changed fingerprint means the loop's line
-# changed: recheck that a failing iteration still fails make, and that the
-# coverage still holds, BEFORE updating it.
+# iteration fails make. The steps for adding or updating an entry are in
+# test/standard/make-loops.bats's failure message.
 #
 # test/standard/make-loops.bats fails on any loop missing from this list, any
 # entry with no matching loop, any loop whose line no longer matches its
@@ -27,6 +23,9 @@
 #   <coverage>     test:<path under test/>:<exact @test name>
 #                  make-time:<why>  only for a $(foreach) that runs inside make
 #                                   and emits no shell commands
+#                  not-a-loop:<why> only for a shell for/while/until match that
+#                                   reading the line shows isn't a loop; <why>
+#                                   says what the text is
 #                  untested:<why>   grandfathered entries only, never a new loop
 # A context with two loops of the same kind gets two lines.
 
