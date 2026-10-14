@@ -1,4 +1,6 @@
-# Lists the loops in one makefile, one "<file>\t<context>\t<kind>" line each.
+# Lists the loops in one makefile, one "<file>\t<context>\t<kind>\t<text>" line
+# each, <text> being the whole logical line containing the loop with each run
+# of blanks collapsed to one space; make-loops.bats fingerprints it.
 # test/standard/make-loops.bats says what counts as a loop and why; the header
 # of test/lib/pgxntool-loops.txt describes the context keys.
 #
@@ -41,6 +43,7 @@ END { if (np) logical() }
 function logical(   i, raw, r, t, p, s, name, key) {
   raw = phys[1]
   for (i = 2; i <= np; i++) raw = raw " " phys[i]
+  logical_text = norm(raw)
 
   # Like make, only lines that don't start with a tab can nest or end a define.
   if (defdepth) {
@@ -154,7 +157,7 @@ function search_shell(s, key,   at, m) {
 }
 
 function emit(key, kind) {
-  print file "\t" key "\t" kind
+  print file "\t" key "\t" kind "\t" logical_text
 }
 
 # Position of the first character of s that is in set and outside any
