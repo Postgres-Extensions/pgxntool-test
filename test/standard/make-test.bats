@@ -570,7 +570,7 @@ EOF
 
 @test "test and verify-results pass results/*.out and the test/install actual output to the TAP check" {
   # The template has test/install/create_install_marker.sql; its actual output
-  # is $(TESTOUT)/install/<name>.out (TESTOUT defaults to test).
+  # is $(TESTDIR)/install/<name>.out, whatever TESTOUT is.
   run make -n test
   assert_success
   assert_contains "$output" "test/bin/check-tap-output.sh test/results/*.out test/install/create_install_marker.out"
