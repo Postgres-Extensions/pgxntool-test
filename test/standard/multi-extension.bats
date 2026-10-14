@@ -164,6 +164,44 @@ setup() {
   assert_success
 }
 
+@test "make print-pgtle fails when cat fails for a non-last extension" {
+  run make print-_PGXNTOOL_EXTENSIONS
+  assert_success
+  local list=${output#*set to \"} exts
+  read -ra exts <<< "${list%\"}"
+  local first_ext=${exts[0]}
+  [ ${#exts[@]} -ge 2 ] || error "need at least 2 extensions, got: $output"
+  debug 2 "first extension: $first_ext"
+
+  # A fixed target version keeps print-pgtle from querying a live pg_tle.
+  local version=1.4.0 pgtle_dir
+  pgtle_dir=$(pgxntool/pgtle.sh --get-dir "$version") || error "pgtle.sh --get-dir $version failed"
+  local target="$pgtle_dir/$first_ext.sql"
+  local marker="$BATS_TEST_TMPDIR/fake-cat-matched"
+
+  # Fails only on the file print-pgtle cats for the first extension; every
+  # other call goes to the real cat, since the pgtle prerequisite's pgtle.sh
+  # uses cat too.
+  local fakebin="$BATS_TEST_TMPDIR/fakebin" real_cat
+  real_cat=$(type -P cat)
+  mkdir -p "$fakebin"
+  cat > "$fakebin/cat" <<EOF
+#!/usr/bin/env bash
+if [ \$# -eq 1 ] && [ "\$1" = $(printf %q "$target") ]; then
+  touch $(printf %q "$marker")
+  echo "fake cat: failing on \$1" >&2
+  exit 1
+fi
+exec $(printf %q "$real_cat") "\$@"
+EOF
+  chmod +x "$fakebin/cat"
+
+  PATH="$fakebin:$PATH" run make print-pgtle PGXNTOOL_PGTLE_TARGET_VERSION="$version"
+  assert_failure
+  [ -f "$marker" ] || error "fake cat never saw $target; output: $output"
+  assert_contains "$output" "fake cat: failing on $target"
+}
+
 @test "make pgtle fails when pgtle.sh fails for a non-last extension" {
   run make print-_PGXNTOOL_EXTENSIONS
   assert_success

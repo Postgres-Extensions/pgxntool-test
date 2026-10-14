@@ -26,7 +26,7 @@
 base.mk	rule:$(_PGXNTOOL_INSTALL_SCHEDULE)	for	untested:grandfathered; an iteration can only fail appending to the schedule file that the `>` just before the loop created, so there is no practical way to fail a non-last one
 base.mk	rule:check-duplicate-docs	foreach	make-time:expands to $(warning) calls; the recipe itself runs only `:`
 base.mk	rule:pgtle	for	test:standard/multi-extension.bats:make pgtle fails when pgtle.sh fails for a non-last extension
-base.mk	rule:print-pgtle	foreach	untested:grandfathered; no test makes a non-last extension's iteration fail (each iteration exits 1 on a missing file or a failed cat)
+base.mk	rule:print-pgtle	foreach	test:standard/multi-extension.bats:make print-pgtle fails when cat fails for a non-last extension
 base.mk	rule:results	for	test:standard/make-test.bats:make results fails when a copy other than the last one fails (pgxntool#140)
 base.mk	rule:results-build	for	test:standard/make-test.bats:results-build fails when a copy fails (pgxntool#140)
 base.mk	toplevel	foreach	make-time:$(eval)s an ASCIIDOC_template rule for each of ASCIIDOC_EXTS
