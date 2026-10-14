@@ -118,6 +118,14 @@ setup() {
   # trimming (issues #25, #26).
   run make pgtle
   assert_success
+  local dir found=0
+  for dir in pg_tle/*/; do
+    [ -d "$dir" ] || break
+    found=1
+    [ -f "${dir}ext_alpha.sql" ] || error "make pgtle did not generate ${dir}ext_alpha.sql"
+    [ -f "${dir}ext_beta.sql" ] || error "make pgtle did not generate ${dir}ext_beta.sql"
+  done
+  [ "$found" = 1 ] || error "make pgtle generated no pg_tle/<range>/ directory"
 }
 
 @test "sql/ext_alpha--1.0.0.sql is generated" {
@@ -162,6 +170,66 @@ setup() {
 
   run grep -q '"ext_beta"' META.json
   assert_success
+}
+
+# Sets first_ext, pgtle_version and pgtle_dir (pgtle_version's range
+# directory) in the caller's scope.
+load_first_ext_and_pgtle_dir() {
+  run make print-_PGXNTOOL_EXTENSIONS
+  assert_success
+  local list=${output#*set to \"} exts
+  read -ra exts <<< "${list%\"}"
+  first_ext=${exts[0]}
+  [ ${#exts[@]} -ge 2 ] || error "need at least 2 extensions, got: $output"
+  debug 2 "first extension: $first_ext"
+  pgtle_version=1.4.0
+  pgtle_dir=$(pgxntool/pgtle.sh --get-dir "$pgtle_version") ||
+    error "pgtle.sh --get-dir $pgtle_version failed"
+}
+
+# Must run before the "make pgtle fails" test, which leaves print-pgtle broken.
+@test "make print-pgtle fails when cat fails for a non-last extension" {
+  local first_ext pgtle_version pgtle_dir
+  load_first_ext_and_pgtle_dir
+
+  local target="$pgtle_dir/$first_ext.sql"
+  local marker="$BATS_TEST_TMPDIR/fake-cat-matched"
+
+  # Fails only on the file print-pgtle cats for the first extension; every
+  # other call goes to the real cat, since the pgtle prerequisite's pgtle.sh
+  # uses cat too.
+  local fakebin="$BATS_TEST_TMPDIR/fakebin" real_cat
+  real_cat=$(type -P cat)
+  mkdir -p "$fakebin"
+  cat > "$fakebin/cat" <<EOF
+#!/usr/bin/env bash
+if [ \$# -eq 1 ] && [ "\$1" = $(printf %q "$target") ]; then
+  touch $(printf %q "$marker")
+  echo "fake cat: failing on \$1" >&2
+  exit 1
+fi
+exec $(printf %q "$real_cat") "\$@"
+EOF
+  chmod +x "$fakebin/cat"
+
+  # A fixed target version keeps print-pgtle from querying a live pg_tle.
+  PATH="$fakebin:$PATH" run make print-pgtle PGXNTOOL_PGTLE_TARGET_VERSION="$pgtle_version"
+  assert_failure
+  [ -f "$marker" ] || error "fake cat never saw $target; output: $output"
+  assert_contains "$output" "fake cat: failing on $target"
+}
+
+# Leaves a directory at pg_tle/<range>/<first_ext>.sql, which breaks print-pgtle; must run after it.
+@test "make pgtle fails when pgtle.sh fails for a non-last extension" {
+  local first_ext pgtle_version pgtle_dir
+  load_first_ext_and_pgtle_dir
+
+  # A directory where pgtle.sh writes its output file makes it fail for the
+  # first extension only; the make call's own exit status is what's asserted.
+  rm -rf pg_tle
+  mkdir -p "$pgtle_dir/$first_ext.sql"
+  run make pgtle
+  assert_failure
 }
 
 # vi: expandtab sw=2 ts=2

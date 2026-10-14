@@ -21,6 +21,8 @@
 #   brand-new test's first expected output through (issue #119), and can be
 #   disabled. Its own pass/fail logic lives in verify-results-pgtap-script.bats
 # - PGXNTOOL_VERIFY_RESULTS_MODE is validated (pgtap/diffs, case-insensitive)
+# - `make results` and `results-build` fail when any copy into expected/
+#   fails (pgxntool#140)
 
 load ../lib/helpers
 
@@ -753,6 +755,22 @@ EOF
   rm -f test/results/pgtap_fail.out
 }
 
+@test "make results fails when a copy other than the last one fails (pgxntool#140)" {
+  # A directory at cp's destination makes cp fail even as root; the zz_ file
+  # guarantees the failing copy isn't the last one.
+  mkdir -p test/results test/expected/0_cp_fail.out/0_cp_fail.out
+  echo "copy fails" > test/results/0_cp_fail.out
+  echo "copy succeeds" > test/results/zz_cp_after.out
+
+  # -o verify-results skips the test run, leaving only the copy loop.
+  run make -o verify-results results
+  rm -rf test/expected/0_cp_fail.out
+  rm -f test/expected/zz_cp_after.out test/results/0_cp_fail.out test/results/zz_cp_after.out
+
+  assert_failure
+  assert_contains "$output" "cannot overwrite directory"
+}
+
 # ============================================================================
 # results-build (issue #108)
 # ============================================================================
@@ -808,6 +826,22 @@ EOF
   [ -z "$output" ] || error "simple_build_test.out should have been left untouched, not blessed: $output"
 
   git checkout -- test/build/simple_build_test.sql
+}
+
+@test "results-build fails when a copy fails (pgxntool#140)" {
+  skip_if_no_postgres
+
+  # A directory at cp's destination makes cp fail even as root; the template's
+  # build_check.out and simple_build_test.out sort after 0_cp_fail.out, so it isn't the last copy.
+  mkdir -p test/build/results test/build/expected/0_cp_fail.out/0_cp_fail.out
+  echo "copy fails" > test/build/results/0_cp_fail.out
+
+  run make results-build
+  rm -rf test/build/expected/0_cp_fail.out
+  rm -f test/build/results/0_cp_fail.out
+
+  assert_failure
+  assert_contains "$output" "cannot overwrite directory"
 }
 
 # vi: expandtab sw=2 ts=2
