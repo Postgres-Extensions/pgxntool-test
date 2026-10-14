@@ -1,0 +1,38 @@
+# Every loop in pgxntool's *.mk files, with the test proving that a failing
+# iteration fails make. A new loop needs that test BEFORE it gets an entry
+# here: write a test that makes a non-last iteration fail and asserts make
+# exits non-zero, confirm it fails with the loop's `|| exit 1` removed, then
+# add the entry naming it.
+#
+# test/standard/make-loops.bats fails on any loop missing from this list, any
+# entry with no matching loop, and any coverage test that doesn't exist.
+#
+# Format: four tab-separated fields per line. Lines starting with # and blank
+# lines are ignored; order doesn't matter.
+#   <file>      path under pgxntool/
+#   <context>   where the loop is, never a line number:
+#                 rule:<target>  a recipe or rule line; <target> is the
+#                                unexpanded text before the rule's ':'
+#                 var:<name>     a variable assignment
+#                 define:<name>  a define body
+#                 toplevel       any other line, e.g. $(foreach ...$(eval ...))
+#   <kind>      for, while or until (shell), or foreach (make)
+#   <coverage>  test:<path under test/>:<exact @test name>
+#               make-time:<why>  only for a $(foreach) that runs inside make
+#                                and emits no shell commands
+#               untested:<why>   grandfathered entries only, never a new loop
+# A context with two loops of the same kind gets two lines.
+
+base.mk	rule:$(_PGXNTOOL_INSTALL_SCHEDULE)	for	untested:grandfathered; an iteration can only fail appending to the schedule file that the `>` just before the loop created, so there is no practical way to fail a non-last one
+base.mk	rule:check-duplicate-docs	foreach	make-time:expands to $(warning) calls; the recipe itself runs only `:`
+base.mk	rule:pgtle	for	test:standard/multi-extension.bats:make pgtle fails when pgtle.sh fails for a non-last extension
+base.mk	rule:print-pgtle	foreach	untested:grandfathered; no test makes a non-last extension's iteration fail (each iteration exits 1 on a missing file or a failed cat)
+base.mk	rule:results	for	test:standard/make-test.bats:make results fails when a copy other than the last one fails (pgxntool#140)
+base.mk	rule:results-build	for	test:standard/make-test.bats:results-build fails when a copy fails (pgxntool#140)
+base.mk	toplevel	foreach	make-time:$(eval)s an ASCIIDOC_template rule for each of ASCIIDOC_EXTS
+base.mk	var:ASCIIDOC_FILES	foreach	make-time:builds a file list (outer $(foreach))
+base.mk	var:ASCIIDOC_FILES	foreach	make-time:builds a file list (inner $(foreach))
+base.mk	var:ASCIIDOC_HTML	foreach	make-time:builds a file list
+base.mk	var:DOCS	foreach	make-time:builds a file list
+base.mk	var:_PGXNTOOL_DUPLICATE_DOCS	foreach	make-time:builds a name list
+base.mk	var:_pgxntool_docs_named	foreach	make-time:builds a file list
