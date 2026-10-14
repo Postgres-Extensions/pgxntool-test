@@ -831,7 +831,8 @@ EOF
 @test "results-build fails when a copy fails (pgxntool#140)" {
   skip_if_no_postgres
 
-  # A directory at cp's destination makes cp fail even as root.
+  # A directory at cp's destination makes cp fail even as root; the template's
+  # build_check.out and simple_build_test.out sort after 0_cp_fail.out, so it isn't the last copy.
   mkdir -p test/build/results test/build/expected/0_cp_fail.out/0_cp_fail.out
   echo "copy fails" > test/build/results/0_cp_fail.out
 
