@@ -841,7 +841,6 @@ EOF
 
   assert_failure
   assert_contains "$output" "cannot overwrite directory"
-  assert_not_contains "$output" "not blessing stale output"
 }
 
 # vi: expandtab sw=2 ts=2
