@@ -7,7 +7,7 @@
 # decision logic: what counts as TAP output, and which TAP output fails.
 #
 # make-test.bats covers only base.mk's wiring (which files `make test` passes
-# in, the PGXNTOOL_ENABLE_CHECK_TAP_OUTPUT=no skip, exit-status propagation)
+# in, the PGXNTOOL_VERIFY_RESULTS_MODE=diffs skip, exit-status propagation)
 # plus one real end-to-end failure; verify-results-pgtap-script.bats covers
 # verify-results-pgtap.sh's use of this script.
 

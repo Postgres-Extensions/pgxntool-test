@@ -563,7 +563,7 @@ EOF
 #
 # Which TAP output fails is check-tap-output.sh's own logic, covered in
 # check-tap-output-script.bats. These cover base.mk's wiring only: the files
-# the recipe passes in, the PGXNTOOL_ENABLE_CHECK_TAP_OUTPUT=no skip, and that
+# the recipe passes in, the PGXNTOOL_VERIFY_RESULTS_MODE=diffs skip, and that
 # the script's exit status decides `make test`. The one real end-to-end case
 # (a blessed `not ok`) is in the verify-results section below, since seeding it
 # needs `make results`.
@@ -591,18 +591,13 @@ EOF
   assert_success
   assert_contains "$output" "verify-results-pgtap.sh --pgtap-only test test/install/create_install_marker.out"
 
-  run make -n test PGXNTOOL_ENABLE_CHECK_TAP_OUTPUT=no
+  run make -n test PGXNTOOL_VERIFY_RESULTS_MODE=diffs
   assert_success
   assert_not_contains "$output" "check-tap-output.sh"
+  assert_contains "$output" "cat test/regression.diffs"
 }
 
-@test "PGXNTOOL_ENABLE_CHECK_TAP_OUTPUT rejects invalid values" {
-  run make -n test PGXNTOOL_ENABLE_CHECK_TAP_OUTPUT=maybe
-  assert_failure
-  assert_contains "$output" "PGXNTOOL_ENABLE_CHECK_TAP_OUTPUT"
-}
-
-@test "make test runs the TAP check stub, takes its exit status, and skips it when disabled" {
+@test "make test runs the TAP check stub, takes its exit status, and skips it in diffs mode" {
   skip_if_no_postgres
 
   local marker="$BATS_TEST_TMPDIR/check-tap-output-invoked"
@@ -618,10 +613,10 @@ EOF
   assert_success
   assert_file_exists "$marker"
 
-  # Disabled: never invoked at all, not merely tolerated.
+  # diffs mode: never invoked at all, not merely tolerated.
   rm -f "$marker"
   stub_script=$(make_stub_script disabled-stub 1 "" "$marker")
-  run make test PGXNTOOL_ENABLE_CHECK_TAP_OUTPUT=no _PGXNTOOL_CHECK_TAP_OUTPUT_SCRIPT="$stub_script"
+  run make test PGXNTOOL_VERIFY_RESULTS_MODE=diffs _PGXNTOOL_CHECK_TAP_OUTPUT_SCRIPT="$stub_script"
   assert_success
   assert_file_not_exists "$marker"
 }
@@ -736,11 +731,6 @@ EOF
     assert_failure
     assert_contains "$output" "PGXNTOOL_VERIFY_RESULTS_MODE must be one of: pgtap pgtap-only diffs; got \"$value\""
   done
-
-  # pgtap-only without the TAP check would pass TAP tests on nothing.
-  run make print-PGXNTOOL_VERIFY_RESULTS_MODE PGXNTOOL_VERIFY_RESULTS_MODE=pgtap-only PGXNTOOL_ENABLE_CHECK_TAP_OUTPUT=NO
-  assert_failure
-  assert_contains "$output" "PGXNTOOL_VERIFY_RESULTS_MODE=pgtap-only requires PGXNTOOL_ENABLE_CHECK_TAP_OUTPUT=yes"
 }
 
 @test "mixed-case PGXNTOOL_VERIFY_RESULTS_MODE selects the matching verify-results recipe" {
