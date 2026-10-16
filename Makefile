@@ -4,12 +4,17 @@ all: test
 # Capture git status once at Make parse time
 GIT_DIRTY := $(shell git status --porcelain 2>/dev/null)
 
+# Initialize the BATS submodule on demand (a fresh clone or worktree has it empty).
+# Every target that runs test/bats/bin/bats depends on this file.
+test/bats/bin/bats:
+	git submodule update --init --recursive test/bats
+
 # Build fresh foundation environment (clean + create)
 # Foundation is the base TEST_REPO that all tests depend on
 # See test/lib/foundation.bats for detailed explanation of why foundation.bats
 # is both a test and a library
 .PHONY: foundation
-foundation: clean-envs
+foundation: clean-envs test/bats/bin/bats
 	@test/bats/bin/bats test/lib/foundation.bats
 
 # Test recursion and pollution detection
@@ -17,7 +22,7 @@ foundation: clean-envs
 # as a prerequisite. This validates that recursion and pollution detection work correctly.
 # Note: Doesn't matter which independent test we use, we just pick the fastest one (doc).
 .PHONY: test-recursion
-test-recursion: clean-envs
+test-recursion: clean-envs test/bats/bin/bats
 	@echo "Testing recursion with clean environment..."
 	@test/bats/bin/bats test/standard/doc.bats
 
@@ -42,7 +47,7 @@ ALL_INDEPENDENT_TESTS := $(STANDARD_TESTS) $(EXTRA_TESTS)
 # first with a clean environment, we exercise these systems before running the full suite.
 # If recursion is broken, we want to know immediately, not after running all tests.
 .PHONY: test-setup
-test-setup:
+test-setup: test/bats/bin/bats
 ifneq ($(GIT_DIRTY),)
 	@echo "Git repo is dirty (uncommitted changes detected)"
 	@echo "Running recursion test first to validate test infrastructure..."
@@ -61,7 +66,7 @@ endif
 # If we only ran the last test, prerequisite tests would run but their results
 # wouldn't appear in the output.
 .PHONY: test
-test:
+test: test/bats/bin/bats
 	@echo
 	@echo "Tip: Use 'make test-extra' for additional tests, or 'make test-all' for everything"
 	@echo
@@ -75,7 +80,7 @@ test:
 # These tests have additional requirements (like multiple pg_tle versions installed)
 # Use test-all to run standard tests plus extra tests together
 .PHONY: test-extra
-test-extra:
+test-extra: test/bats/bin/bats
 ifneq ($(EXTRA_TESTS),)
 	@echo
 	@echo "Tip: Use 'make test-all' to run both standard and extra tests"
@@ -92,7 +97,7 @@ endif
 # Run regular test suite PLUS extra/optional tests
 # This passes all test files to bats in a single invocation for proper TAP output
 .PHONY: test-all
-test-all:
+test-all: test/bats/bin/bats
 	@$(MAKE) test-setup
 	@test/bats/bin/bats $(SEQUENTIAL_TESTS) $(STANDARD_TESTS) $(EXTRA_TESTS)
 

@@ -45,7 +45,7 @@ When the background task completes, read the summary from the task output.
 
 **CRITICAL RULES:**
 
-1. If STATUS is `FAIL`: **STOP immediately**. Report failures to user. Do not proceed with any other work.
+1. If STATUS is `FAIL`: **STOP immediately**. Report failures to user. Do not proceed with any other work. `FAIL` also covers a non-zero command exit, zero tests run, and a TAP plan/count mismatch, even with no `not ok` lines; the `REASON:` line after `STATUS:` says which applied.
 2. If STATUS is `PASS_WITH_SKIPS`: **STOP and report**. Skips are test problems that need investigation, not things to dismiss.
 3. Only STATUS `PASS` with zero skips is acceptable.
 4. **Never rationalize** failures or skips as "pre-existing", "expected", or "unrelated".
