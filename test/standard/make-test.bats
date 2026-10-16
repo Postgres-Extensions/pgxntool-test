@@ -559,7 +559,7 @@ EOF
   assert_success
 }
 
-# Test: TAP output check in the `test` recipe (issue #106)
+# Test: TAP output check in the `test` recipe (Postgres-Extensions/pgxntool#106)
 #
 # Which TAP output fails is check-tap-output.sh's own logic, covered in
 # check-tap-output-script.bats. These cover base.mk's wiring only: the files
@@ -795,7 +795,7 @@ EOF
   rm -f test/sql/brand_new.sql test/expected/brand_new.out test/results/brand_new.out
 }
 
-@test "make test fails on a not ok that was blessed into expected output (issue #106)" {
+@test "make test fails on a not ok that was blessed into expected output (Postgres-Extensions/pgxntool#106)" {
   skip_if_no_postgres
 
   # Actual output matches expected byte for byte, so regression.diffs stays
