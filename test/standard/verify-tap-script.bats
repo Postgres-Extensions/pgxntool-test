@@ -125,7 +125,7 @@ ok 2'
   assert_contains "$output" "planned 1 tests but found 2"
 }
 
-@test "verify-tap.sh: fails on input with no TAP at all" {
+@test "verify-tap.sh: fails on input with no TAP at all, unless --skip-non-tap skips it" {
   # Plain SQL output, even mentioning TAP phrases mid-line, means nothing ran.
   write_out plain '\set ECHO none
 
@@ -137,6 +137,24 @@ ok 2'
   run "$SCRIPT" "$OUTDIR/plain.out"
   assert_failure_with_status 1
   assert_contains "$output" "no TAP output in $OUTDIR/plain.out"
+
+  run "$SCRIPT" --skip-non-tap "$OUTDIR/plain.out"
+  assert_success
+  [ -z "$output" ] || error "expected no output, got: $output"
+
+  # Skipping is only for input with no TAP lines; a TAP stream beside it is
+  # still judged, wherever the flag goes, and so is stdin.
+  write_out bad '1..1
+not ok 1'
+  run "$SCRIPT" "$OUTDIR/plain.out" "$OUTDIR/bad.out" --skip-non-tap
+  assert_failure_with_status 1
+  assert_contains "$output" "pgtap failure detected in $OUTDIR/bad.out"
+  assert_not_contains "$output" "plain.out"
+
+  run bash -c '"$SCRIPT" --skip-non-tap < "$OUTDIR/plain.out"'
+  assert_success
+  run bash -c '"$SCRIPT" --skip-non-tap < "$OUTDIR/bad.out"'
+  assert_failure_with_status 1
 }
 
 @test "verify-tap.sh: reads stdin with no arguments or '-', reporting to stderr as stdin" {
