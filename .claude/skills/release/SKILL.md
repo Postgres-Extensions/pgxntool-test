@@ -343,13 +343,12 @@ genuinely unclear, ask the user rather than guessing.
 
 ### Compile the complete fixed-issues line
 
-The `/commit` skill (step 3b) now maintains this line incrementally, one
-commit at a time, whenever a commit's message carries a `Fixes #N` for a
-pgxntool issue -- so by release time the STABLE section's fixed-issues line
+`/pr` ("HISTORY.asc") maintains this line per PR, from each pgxntool PR's
+`Fixes #N` set -- so by release time the STABLE section's fixed-issues line
 should already list most or all of what belongs here. This step is the
 **audit/safety net**, not the primary mechanism: it catches anything that
-slipped through the per-commit step (a commit made outside `/commit`, a
-`Fixes #N` added to a PR body after the commit landed, manual edits, etc.)
+slipped through the per-PR step (a PR prepared outside `/pr`, a `Fixes #N`
+added to a PR body without re-checking the line, manual edits, etc.)
 and re-derives the complete, authoritative list from `release..HEAD` history
 to verify against what's already in the file.
 
