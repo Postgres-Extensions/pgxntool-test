@@ -20,7 +20,7 @@
 # - verify-results blocks `make results` when tests are failing, lets a
 #   brand-new test's first expected output through (issue #119), and can be
 #   disabled. Its own pass/fail logic lives in verify-results-pgtap-script.bats
-# - PGXNTOOL_VERIFY_RESULTS_MODE is validated (pgtap/diffs, case-insensitive)
+# - PGXNTOOL_VERIFY_RESULTS_MODE is validated (pgtap/pgtap-only/diffs, case-insensitive)
 
 load ../lib/helpers
 
@@ -559,6 +559,68 @@ EOF
   assert_success
 }
 
+# Test: TAP output check in the `test` recipe (Postgres-Extensions/pgxntool#106)
+#
+# Which TAP output fails is check-tap-output.sh's own logic, covered in
+# check-tap-output-script.bats. These cover base.mk's wiring only: the files
+# the recipe passes in, the PGXNTOOL_VERIFY_RESULTS_MODE=diffs skip, and that
+# the script's exit status decides `make test`. The one real end-to-end case
+# (a blessed `not ok`) is in the verify-results section below, since seeding it
+# needs `make results`.
+
+@test "test and verify-results pass results/*.out and the test/install actual output to the TAP check" {
+  # The template has test/install/create_install_marker.sql; its actual output
+  # is $(TESTDIR)/install/<name>.out, whatever TESTOUT is.
+  run make -n test
+  assert_success
+  assert_contains "$output" "test/bin/check-tap-output.sh test/results/*.out test/install/create_install_marker.out"
+
+  run make -n verify-results
+  assert_success
+  assert_contains "$output" "verify-results-pgtap.sh test test/install/create_install_marker.out"
+
+  # pgtap-only: verify-results-pgtap.sh, not a plain regression.diffs check,
+  # judges `make test`'s diffs, after the same TAP check.
+  run make -n test PGXNTOOL_VERIFY_RESULTS_MODE=pgtap-only
+  assert_success
+  assert_contains "$output" "test/bin/check-tap-output.sh test/results/*.out test/install/create_install_marker.out"
+  assert_contains "$output" "verify-results-pgtap.sh --pgtap-only --for-test test || status=1"
+  assert_not_contains "$output" "cat test/regression.diffs"
+
+  run make -n verify-results PGXNTOOL_VERIFY_RESULTS_MODE=pgtap-only
+  assert_success
+  assert_contains "$output" "verify-results-pgtap.sh --pgtap-only test test/install/create_install_marker.out"
+
+  run make -n test PGXNTOOL_VERIFY_RESULTS_MODE=diffs
+  assert_success
+  assert_not_contains "$output" "check-tap-output.sh"
+  assert_contains "$output" "cat test/regression.diffs"
+}
+
+@test "make test runs the TAP check stub, takes its exit status, and skips it in diffs mode" {
+  skip_if_no_postgres
+
+  local marker="$BATS_TEST_TMPDIR/check-tap-output-invoked"
+  local stub_script
+
+  stub_script=$(make_stub_script fail-stub 5 "STUB SENTINEL MESSAGE")
+  run make test _PGXNTOOL_CHECK_TAP_OUTPUT_SCRIPT="$stub_script"
+  assert_failure
+  assert_contains "$output" "STUB SENTINEL MESSAGE"
+
+  stub_script=$(make_stub_script pass-stub 0 "" "$marker")
+  run make test _PGXNTOOL_CHECK_TAP_OUTPUT_SCRIPT="$stub_script"
+  assert_success
+  assert_file_exists "$marker"
+
+  # diffs mode: never invoked at all, not merely tolerated.
+  rm -f "$marker"
+  stub_script=$(make_stub_script disabled-stub 1 "" "$marker")
+  run make test PGXNTOOL_VERIFY_RESULTS_MODE=diffs _PGXNTOOL_CHECK_TAP_OUTPUT_SCRIPT="$stub_script"
+  assert_success
+  assert_file_not_exists "$marker"
+}
+
 # ============================================================================
 # verify-results / make results (issues #14, #49)
 # ============================================================================
@@ -648,13 +710,13 @@ EOF
   assert_not_contains "$output" "Cannot run 'make results'"
 }
 
-@test "PGXNTOOL_VERIFY_RESULTS_MODE accepts pgtap/diffs case-insensitively" {
+@test "PGXNTOOL_VERIFY_RESULTS_MODE accepts pgtap/pgtap-only/diffs case-insensitively" {
   run make print-PGXNTOOL_VERIFY_RESULTS_MODE
   assert_success
   assert_contains "$output" 'set to "pgtap"'
 
   local value expected
-  for value in pgtap pgTap PGTAP diffs Diffs DIFFS; do
+  for value in pgtap pgTap PGTAP pgtap-only PgTap-Only diffs Diffs DIFFS; do
     expected=$(echo "$value" | tr '[:upper:]' '[:lower:]')
     run make print-PGXNTOOL_VERIFY_RESULTS_MODE "PGXNTOOL_VERIFY_RESULTS_MODE=$value"
     assert_success
@@ -667,7 +729,7 @@ EOF
   for value in bogus pgtapp "pgtap diffs" ""; do
     run make print-PGXNTOOL_VERIFY_RESULTS_MODE "PGXNTOOL_VERIFY_RESULTS_MODE=$value"
     assert_failure
-    assert_contains "$output" "PGXNTOOL_VERIFY_RESULTS_MODE must be one of: pgtap diffs; got \"$value\""
+    assert_contains "$output" "PGXNTOOL_VERIFY_RESULTS_MODE must be one of: pgtap pgtap-only diffs; got \"$value\""
   done
 }
 
@@ -731,6 +793,29 @@ EOF
   # results/ too: `make results` blesses every results/*.out into expected/,
   # so a leftover here would reappear as an orphan for check-stale-expected.
   rm -f test/sql/brand_new.sql test/expected/brand_new.out test/results/brand_new.out
+}
+
+@test "make test fails on a not ok that was blessed into expected output (Postgres-Extensions/pgxntool#106)" {
+  skip_if_no_postgres
+
+  # Actual output matches expected byte for byte, so regression.diffs stays
+  # absent; only the TAP check can fail this. Blessing it needs the
+  # PGXNTOOL_ENABLE_VERIFY_RESULTS=no escape hatch, which must keep working
+  # because the TAP check lives in the `test` recipe, not TEST_DEPS.
+  sed -e 's/, 3$/, 4/' test/sql/pgxntool-test.sql > test/sql/blessed_fail.sql
+  grep -q ', 4$' test/sql/blessed_fail.sql || error "failed to create a failing test from test/sql/pgxntool-test.sql"
+
+  run make PGXNTOOL_ENABLE_VERIFY_RESULTS=no results
+  assert_success
+  assert_file_exists test/expected/blessed_fail.out
+  grep -q '^not ok' test/expected/blessed_fail.out || error "blessed_fail.out has no 'not ok' line"
+
+  run make test
+  assert_failure
+  assert_contains "$output" "pgtap failure detected in test/results/blessed_fail.out"
+  assert_file_not_exists test/regression.diffs
+
+  rm -f test/sql/blessed_fail.sql test/expected/blessed_fail.out test/results/blessed_fail.out
 }
 
 @test "verify-results propagates a pgtap failure the script detects" {
