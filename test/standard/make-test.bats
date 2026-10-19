@@ -21,6 +21,8 @@
 #   brand-new test's first expected output through (issue #119), and can be
 #   disabled. Its own pass/fail logic lives in verify-results-pgtap-script.bats
 # - PGXNTOOL_VERIFY_RESULTS_MODE is validated (pgtap/diffs, case-insensitive)
+#   and, in pgtap mode, makes `make test` run verify-tap.sh, so a blessed
+#   `not ok` still fails it
 
 load ../lib/helpers
 
@@ -671,7 +673,7 @@ EOF
   done
 }
 
-@test "mixed-case PGXNTOOL_VERIFY_RESULTS_MODE selects the matching verify-results recipe" {
+@test "mixed-case PGXNTOOL_VERIFY_RESULTS_MODE selects the matching verify-results and test recipes" {
   # The pgtap recipe invokes verify-results-pgtap.sh; the diffs recipe is an
   # inline regression.diffs check carrying the block message.
   run make -n verify-results PGXNTOOL_VERIFY_RESULTS_MODE=pgTap 2>&1
@@ -683,6 +685,14 @@ EOF
   assert_success
   assert_contains "$output" "Cannot run 'make results'"
   assert_not_contains "$output" "verify-results-pgtap.sh"
+
+  # `make test` runs verify-tap.sh only in pgtap mode, the default.
+  run make -n test 2>&1
+  assert_success
+  assert_contains "$output" "verify-tap.sh --skip-non-tap"
+  run make -n test PGXNTOOL_VERIFY_RESULTS_MODE=DIFFS 2>&1
+  assert_success
+  assert_not_contains "$output" "verify-tap.sh"
 }
 
 @test "make results updates expected output" {
@@ -751,6 +761,25 @@ EOF
   assert_contains "$output" "pgtap failure detected"
 
   rm -f test/results/pgtap_fail.out
+}
+
+@test "make test fails on a not ok that was blessed into its expected output" {
+  skip_if_no_postgres
+
+  # A blessed failure matches its expected file, so pg_regress reports
+  # nothing; only make test's own verify-tap.sh run can catch it.
+  sed 's/, 3$/, 4/' test/sql/pgxntool-test.sql > test/sql/blessed_not_ok.sql
+  run make results PGXNTOOL_ENABLE_VERIFY_RESULTS=no
+  assert_success
+  grep -q '^not ok 1' test/expected/blessed_not_ok.out \
+    || error "blessed_not_ok.out holds no 'not ok' line: $(cat test/expected/blessed_not_ok.out)"
+
+  run make test
+  assert_failure
+  assert_contains "$output" "pgtap failure detected in test/results/blessed_not_ok.out"
+  assert_file_not_exists test/regression.diffs
+
+  rm -f test/sql/blessed_not_ok.sql test/expected/blessed_not_ok.out test/results/blessed_not_ok.out
 }
 
 # ============================================================================

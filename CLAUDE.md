@@ -223,8 +223,8 @@ section once resolved.
    misleading prefix is judged lower-risk than touching it.
 4. **Scripts a user is realistically expected to invoke by hand**:
    `setup.sh`, `pgxntool-sync.sh`, `update-setup-files.sh`, `bin/version`,
-   and `pgtle.sh` (including its own CLI flags, not just the make targets
-   that wrap it).
+   `verify-tap.sh`, and `pgtle.sh` (including its own CLI flags, not just
+   the make targets that wrap it).
 5. **`DEBUG` is a special case**: its existence may be documented (it's
    fine for users to know it exists), but the specific level numbers are
    an internal implementation detail, not a documented contract — changing

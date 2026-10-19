@@ -110,38 +110,40 @@ ok 1'
 }
 
 @test "verify-results-pgtap.sh: refuses to bless a brand-new test whose output holds a SQL error" {
-  # ON_ERROR_STOP aborts the script at the error, so pgtap emits neither
-  # 'not ok' nor its plan-mismatch line and the scan above finds nothing.
+  # An error after the last planned test leaves the TAP itself intact, so
+  # verify-tap.sh passes it and only the regression.diffs scan can catch it.
   #
   # Both of psql's real renderings have to block. pg_regress feeds psql on
   # stdin, so an error in the test file itself starts at column 0, while one
   # inside an \i'd file (setup.sql/finish.sql, which every pgxntool test
   # sources) carries a "psql:<file>:<line>: " prefix -- a column-anchored
   # match would sail straight past the second.
-  write_results errtest '1..2
+  write_results errtest '1..1
 ok 1
 ERROR:  42P01: relation "nope" does not exist'
   append_diff_block errtest '@@ -0,0 +1,3 @@
-+1..2
++1..1
 +ok 1
 +ERROR:  42P01: relation "nope" does not exist'
 
   run "$SCRIPT" "$TESTOUT"
   assert_failure_with_status 1
   assert_contains "$output" "errtest.out"
+  assert_contains "$output" "Tests are failing"
 
   rm -f "$TESTOUT/regression.diffs"
-  write_results errtest '1..2
+  write_results errtest '1..1
 ok 1
 psql:test/pgxntool/setup.sql:3: ERROR:  42P01: relation "nope" does not exist'
   append_diff_block errtest '@@ -0,0 +1,3 @@
-+1..2
++1..1
 +ok 1
 +psql:test/pgxntool/setup.sql:3: ERROR:  42P01: relation "nope" does not exist'
 
   run "$SCRIPT" "$TESTOUT"
   assert_failure_with_status 1
   assert_contains "$output" "errtest.out"
+  assert_contains "$output" "Tests are failing"
 }
 
 @test "verify-results-pgtap.sh: blesses a passing test whose description merely mentions ERROR:" {
@@ -308,6 +310,22 @@ ok 2
   run "$SCRIPT" "$TESTOUT"
   assert_failure_with_status 1
   assert_contains "$output" "pgtap plan mismatch"
+}
+
+@test "verify-results-pgtap.sh: blocks pgtap output with no plan line, leaving plain-SQL output alone" {
+  # A no_plan() test that died before finish(): no 'not ok', no mismatch line.
+  write_results died 'ok 1
+ok 2'
+  write_results plain ' x
+---
+ 1
+(1 row)'
+
+  run "$SCRIPT" "$TESTOUT"
+  assert_failure_with_status 1
+  assert_contains "$output" "died.out has no plan line"
+  assert_contains "$output" "Cannot run 'make results'"
+  assert_not_contains "$output" "plain.out"
 }
 
 @test "verify-results-pgtap.sh: usage error when called with no TESTOUT argument" {
