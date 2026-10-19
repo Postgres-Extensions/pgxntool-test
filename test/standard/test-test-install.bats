@@ -5,6 +5,7 @@
 # Tests the complete test/install lifecycle:
 # - Auto-detection: enabled when test/install/ has SQL files
 # - Schedule generation with ../install/ relative paths
+# - The $(TESTOUT)/install symlink used when TESTOUT differs from TESTDIR
 # - Core contract: install state persists into main test suite
 # - Disabling via PGXNTOOL_ENABLE_TEST_INSTALL
 # - PGXNTOOL_ENABLE_TEST_INSTALL=yes erroring when test/install/ is empty
@@ -45,6 +46,23 @@ setup() {
   # Schedule should reference install files with relative path
   run grep "../install/" test/install/schedule
   assert_success
+
+  # Those ../install/ paths resolve against TESTOUT for actual output but
+  # against TESTDIR for expected output, so a separate TESTOUT gets a
+  # symlink back to TESTDIR's install directory.
+  local out="$BATS_TEST_TMPDIR/testout"
+  run make _test-install-output-link TESTOUT="$out"
+  assert_success
+  [ -L "$out/install" ]
+  [ "$(readlink "$out/install")" = "$TEST_REPO/test/install" ]
+
+  # Anything else already at that path is left alone, and fails the build.
+  rm "$out/install"
+  mkdir "$out/install"
+  run make _test-install-output-link TESTOUT="$out"
+  assert_failure
+  echo "$output" | grep -q "exists and is not a symlink to $TEST_REPO/test/install"
+  [ -d "$out/install" ] && [ ! -L "$out/install" ]
 }
 
 @test "install schedule orders files by name, not filesystem/creation order (issue #111)" {

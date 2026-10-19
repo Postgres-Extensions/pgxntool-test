@@ -90,6 +90,7 @@ pgxntool/WHAT_IS_THIS
 pgxntool/test/
 pgxntool/test/bin/
 pgxntool/test/bin/check-stale-expected.sh
+pgxntool/test/bin/check-tap-output.sh
 pgxntool/test/bin/check-test-install-error-stop.sh
 pgxntool/test/deps.sql
 pgxntool/test/pgxntool/
