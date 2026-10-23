@@ -29,6 +29,11 @@ setup() {
   run make -n test 2>&1
   assert_success
   echo "$output" | grep -q "test-build"
+
+  # Actual output follows TESTOUT; input and expected files stay in TESTDIR.
+  run make -n test-build TESTOUT=/nonexistent/testout 2>&1
+  assert_success
+  echo "$output" | grep -q -- "--inputdir=test/build --outputdir=/nonexistent/testout/build"
 }
 
 @test "test-build runs successfully with template files" {
